@@ -102,8 +102,13 @@ const TileMatchGame = () => {
   const startLevel = (level: number) => {
     setCurrentLevel(level);
     setShowLevelSelect(false);
-    generateTiles();
   };
+
+  useEffect(() => {
+    if (!showLevelSelect && levelData) {
+      generateTiles();
+    }
+  }, [showLevelSelect, currentLevel, generateTiles]);
 
   if (showLevelSelect) {
     return (
@@ -154,17 +159,21 @@ const TileMatchGame = () => {
       )}
 
       {/* Game Board */}
-      <div className="grid grid-cols-6 gap-1 mb-4 min-h-[300px]">
+      <div className="grid grid-cols-6 gap-1.5 mb-4 min-h-[300px] p-2 bg-muted/30 rounded-xl">
         {tiles.slice(0, 36).map(tile => (
           <button
             key={tile.id}
             onClick={() => handleTileClick(tile)}
-            className="aspect-square text-2xl bg-card rounded-lg border-2 hover:border-primary hover:scale-105 transition-all shadow-sm"
-            style={{ transform: `translateZ(${tile.layer * 2}px)` }}
+            className="aspect-square text-2xl bg-card rounded-xl border-2 border-border hover:border-primary hover:scale-110 transition-all shadow-md active:scale-95 animate-fade-in"
           >
             {tile.type.icon}
           </button>
         ))}
+        {tiles.length === 0 && (
+          <div className="col-span-6 flex items-center justify-center text-muted-foreground py-8">
+            Carregando...
+          </div>
+        )}
       </div>
 
       {/* Selected Tiles Bar */}
