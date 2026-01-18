@@ -1,1 +1,5 @@
 project_id = "tzpgtylqjnnhlyqcppyq"
+
+[functions.generate-puzzle-image]
+enabled = true
+verify_jwt = false

@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useGame } from '@/contexts/GameContext';
 import { useSound } from '@/hooks/useSound';
+import { usePuzzleImage } from '@/hooks/usePuzzleImage';
 import { PUZZLE_IMAGES } from '@/data/puzzleData';
-import { ArrowLeft, Eye, Lightbulb, RotateCcw, Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Eye, RotateCcw, Star, Loader2 } from 'lucide-react';
 
 interface PuzzlePiece {
   id: number;
@@ -24,14 +25,15 @@ const PuzzleGame = () => {
   const [filter, setFilter] = useState<'all' | 'AT' | 'NT'>('all');
 
   const puzzleData = selectedPuzzle ? PUZZLE_IMAGES.find(p => p.id === selectedPuzzle) : null;
+  const { imageUrl, isLoading: isImageLoading } = usePuzzleImage(selectedPuzzle);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (selectedPuzzle && !isComplete) {
+    if (selectedPuzzle && !isComplete && !isImageLoading) {
       interval = setInterval(() => setTimer(t => t + 1), 1000);
     }
     return () => clearInterval(interval);
-  }, [selectedPuzzle, isComplete]);
+  }, [selectedPuzzle, isComplete, isImageLoading]);
 
   const startPuzzle = (id: number) => {
     setSelectedPuzzle(id);
@@ -55,7 +57,7 @@ const PuzzleGame = () => {
   };
 
   const handlePieceClick = (piece: PuzzlePiece) => {
-    if (isComplete) return;
+    if (isComplete || isImageLoading) return;
     playSelect();
 
     if (selectedPiece === null) {
@@ -108,20 +110,24 @@ const PuzzleGame = () => {
           <Button variant={filter === 'NT' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('NT')}>✝️ NT</Button>
         </div>
         
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-[60vh] overflow-auto">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[60vh] overflow-auto p-1">
           {filteredPuzzles.map(puzzle => {
             const isCompleted = progress.puzzle.completedPuzzles.includes(puzzle.id);
             return (
               <Card
                 key={puzzle.id}
-                className={`p-2 cursor-pointer hover:shadow-lg transition-all ${isCompleted ? 'border-success' : ''}`}
+                className={`p-2 cursor-pointer hover:shadow-lg hover:scale-105 transition-all ${isCompleted ? 'border-success ring-2 ring-success/30' : ''}`}
                 onClick={() => startPuzzle(puzzle.id)}
               >
-                <div className="aspect-square bg-gradient-to-br from-primary/20 to-secondary/20 rounded flex items-center justify-center text-3xl mb-1">
-                  {isCompleted ? '✓' : puzzle.id}
+                <div className="aspect-square bg-gradient-to-br from-primary/20 to-secondary/20 rounded-lg flex items-center justify-center text-4xl mb-2 overflow-hidden">
+                  {isCompleted ? (
+                    <span className="text-success">✓</span>
+                  ) : (
+                    <span className="text-primary/40 font-bold">{puzzle.id}</span>
+                  )}
                 </div>
-                <div className="text-xs truncate font-medium">{puzzle.title}</div>
-                <div className="text-xs text-muted-foreground">{puzzle.category}</div>
+                <div className="text-xs font-medium truncate">{puzzle.title}</div>
+                <div className="text-xs text-muted-foreground truncate">{puzzle.category}</div>
               </Card>
             );
           })}
@@ -130,6 +136,30 @@ const PuzzleGame = () => {
         <div className="mt-4 text-center text-sm text-muted-foreground">
           {progress.puzzle.completedPuzzles.length}/100 completos
         </div>
+      </div>
+    );
+  }
+
+  // Loading state while image is being generated
+  if (isImageLoading) {
+    return (
+      <div className="p-4 max-w-lg mx-auto flex flex-col items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <h3 className="text-lg font-semibold text-primary mb-2">Gerando imagem bíblica...</h3>
+        <p className="text-sm text-muted-foreground text-center">
+          {puzzleData?.title}
+        </p>
+        <p className="text-xs text-muted-foreground mt-2">
+          Isto pode levar alguns segundos
+        </p>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="mt-4"
+          onClick={() => setSelectedPuzzle(null)}
+        >
+          <ArrowLeft className="h-4 w-4 mr-1" /> Cancelar
+        </Button>
       </div>
     );
   }
@@ -148,29 +178,46 @@ const PuzzleGame = () => {
         <div className="font-mono text-lg">{formatTime(timer)}</div>
       </div>
 
-      {/* Puzzle Grid */}
+      {/* Puzzle Grid with Real Image */}
       <div className="relative">
-        {showGuide && (
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-secondary/30 rounded-lg z-10 flex items-center justify-center">
-            <span className="text-6xl">🖼️</span>
+        {showGuide && imageUrl && (
+          <div className="absolute inset-0 z-10 rounded-lg overflow-hidden">
+            <img 
+              src={imageUrl} 
+              alt={puzzleData?.title}
+              className="w-full h-full object-cover opacity-80"
+            />
           </div>
         )}
-        <div className="grid grid-cols-5 gap-1 aspect-square bg-muted rounded-lg p-1">
+        <div className="grid grid-cols-5 gap-0.5 aspect-square bg-muted rounded-lg p-1 overflow-hidden">
           {Array.from({ length: 25 }).map((_, pos) => {
             const piece = pieces.find(p => p.currentPos === pos);
             const isCorrect = piece && piece.currentPos === piece.correctPos;
             const isSelected = piece && selectedPiece === piece.id;
             
+            // Calculate background position for the piece
+            const pieceRow = piece ? Math.floor(piece.id / 5) : 0;
+            const pieceCol = piece ? piece.id % 5 : 0;
+            
             return (
               <button
                 key={pos}
                 onClick={() => piece && handlePieceClick(piece)}
-                className={`aspect-square rounded text-sm font-bold transition-all
-                  ${isCorrect ? 'bg-success/20 text-success' : 'bg-card'}
-                  ${isSelected ? 'ring-2 ring-primary scale-105' : ''}
-                  hover:scale-105`}
+                className={`aspect-square rounded-sm text-sm font-bold transition-all overflow-hidden
+                  ${isCorrect ? 'ring-1 ring-success' : ''}
+                  ${isSelected ? 'ring-2 ring-primary scale-105 z-10' : ''}
+                  hover:scale-105 hover:z-10`}
+                style={imageUrl ? {
+                  backgroundImage: `url(${imageUrl})`,
+                  backgroundSize: '500%',
+                  backgroundPosition: `${pieceCol * 25}% ${pieceRow * 25}%`,
+                } : {
+                  backgroundColor: 'hsl(var(--card))',
+                }}
               >
-                {piece ? piece.id + 1 : ''}
+                {!imageUrl && piece && (
+                  <span className="text-muted-foreground">{piece.id + 1}</span>
+                )}
               </button>
             );
           })}
@@ -179,7 +226,15 @@ const PuzzleGame = () => {
 
       {/* Controls */}
       <div className="flex justify-center gap-2 mt-4">
-        <Button variant="outline" size="sm" onMouseDown={() => setShowGuide(true)} onMouseUp={() => setShowGuide(false)} onMouseLeave={() => setShowGuide(false)}>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onMouseDown={() => setShowGuide(true)} 
+          onMouseUp={() => setShowGuide(false)} 
+          onMouseLeave={() => setShowGuide(false)}
+          onTouchStart={() => setShowGuide(true)}
+          onTouchEnd={() => setShowGuide(false)}
+        >
           <Eye className="h-4 w-4 mr-1" /> Ver
         </Button>
         <Button variant="outline" size="sm" onClick={() => startPuzzle(selectedPuzzle)}>
@@ -194,20 +249,35 @@ const PuzzleGame = () => {
 
       {/* Complete Modal */}
       {isComplete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="p-6 text-center max-w-sm mx-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="p-6 text-center max-w-sm w-full animate-scale-in">
             <div className="text-4xl mb-2">🎉</div>
             <h3 className="text-xl font-bold text-primary mb-2">Parabéns!</h3>
+            
+            {imageUrl && (
+              <div className="w-32 h-32 mx-auto mb-3 rounded-lg overflow-hidden shadow-lg">
+                <img 
+                  src={imageUrl} 
+                  alt={puzzleData?.title}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+            
             <p className="font-medium mb-2">{puzzleData?.title}</p>
-            <p className="text-muted-foreground text-sm mb-2">"{puzzleData?.verse}"</p>
-            <p className="text-xs mb-4">— {puzzleData?.verseReference}</p>
+            <p className="text-muted-foreground text-sm mb-2 italic">"{puzzleData?.verse}"</p>
+            <p className="text-xs mb-4 text-muted-foreground">— {puzzleData?.verseReference}</p>
+            
             <div className="flex justify-center gap-1 mb-4">
               {[1, 2, 3].map(star => (
-                <Star key={star} className={`h-8 w-8 ${star <= (timer < 180 ? 3 : timer < 300 ? 2 : 1) ? 'text-secondary fill-secondary' : 'text-muted'}`} />
+                <Star 
+                  key={star} 
+                  className={`h-8 w-8 ${star <= (timer < 180 ? 3 : timer < 300 ? 2 : 1) ? 'text-secondary fill-secondary' : 'text-muted'}`} 
+                />
               ))}
             </div>
             <p className="text-sm mb-4">Tempo: {formatTime(timer)}</p>
-            <Button onClick={() => setSelectedPuzzle(null)}>Continuar</Button>
+            <Button onClick={() => setSelectedPuzzle(null)} className="w-full">Continuar</Button>
           </Card>
         </div>
       )}
