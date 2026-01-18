@@ -38,6 +38,7 @@ export interface PuzzlePiece {
 export interface PuzzleImage {
   id: number;
   title: string;
+  description?: string;
   category: string;
   testament: 'AT' | 'NT';
   verse: string;
