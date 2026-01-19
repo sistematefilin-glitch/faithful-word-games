@@ -262,12 +262,12 @@ const PuzzleGame = () => {
       </div>
 
       {/* BOARD AREA - Where pieces are placed */}
-      <div className="mb-4">
-        <div className="text-xs text-muted-foreground text-center mb-2 flex items-center justify-center gap-2">
+      <div className="mb-6">
+        <div className="text-sm text-muted-foreground text-center mb-2 flex items-center justify-center gap-2">
           <Grid3X3 className="h-3 w-3" />
           Tabuleiro ({correctCount}/25 corretas)
         </div>
-        <div className="relative bg-muted/50 rounded-xl p-2 border-2 border-dashed border-muted-foreground/30">
+        <div className="relative bg-muted/50 rounded-xl p-3 border-2 border-dashed border-muted-foreground/30 max-w-md mx-auto">
           {showGuide && imageUrl && (
             <div className="absolute inset-2 z-10 rounded-lg overflow-hidden pointer-events-none">
               <img 
@@ -277,7 +277,7 @@ const PuzzleGame = () => {
               />
             </div>
           )}
-          <div className="grid grid-cols-5 gap-1 aspect-square">
+          <div className="grid grid-cols-5 gap-1.5 aspect-square">
             {Array.from({ length: 25 }).map((_, boardPos) => {
               const piece = piecesOnBoard.find(p => p.currentPos === boardPos);
               const isCorrect = piece && piece.correctPos === boardPos;
@@ -316,17 +316,17 @@ const PuzzleGame = () => {
       </div>
 
       {/* AVAILABLE PIECES AREA */}
-      <div className="mb-4">
-        <div className="text-xs text-muted-foreground text-center mb-2">
+      <div className="mb-6">
+        <div className="text-sm text-muted-foreground text-center mb-2">
           Peças disponíveis ({availablePieces.length} restantes)
         </div>
-        <div className="bg-card rounded-xl p-3 border min-h-[120px]">
+        <div className="bg-card rounded-xl p-4 border min-h-[140px] max-w-md mx-auto">
           {availablePieces.length === 0 ? (
-            <div className="flex items-center justify-center h-20 text-muted-foreground text-sm">
+            <div className="flex items-center justify-center h-24 text-muted-foreground text-base">
               Todas as peças foram colocadas no tabuleiro!
             </div>
           ) : (
-            <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-9 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               {availablePieces.map((piece) => {
                 const isSelected = selectedPiece === piece.id;
                 const pieceRow = Math.floor(piece.id / 5);
@@ -336,6 +336,7 @@ const PuzzleGame = () => {
                   <button
                     key={piece.id}
                     onClick={() => handleAvailablePieceClick(piece)}
+                    title={`Peça ${piece.id + 1}`}
                     className={`aspect-square rounded-lg transition-all overflow-hidden shadow-md
                       ${isSelected ? 'ring-3 ring-primary scale-110 z-10 shadow-xl' : 'hover:scale-105 hover:shadow-lg'}
                     `}
