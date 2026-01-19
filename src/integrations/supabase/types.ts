@@ -128,6 +128,27 @@ export type Database = {
         }
         Relationships: []
       }
+      puzzle_images: {
+        Row: {
+          created_at: string | null
+          id: string
+          image_url: string
+          puzzle_id: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          image_url: string
+          puzzle_id: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          image_url?: string
+          puzzle_id?: number
+        }
+        Relationships: []
+      }
       user_settings: {
         Row: {
           created_at: string

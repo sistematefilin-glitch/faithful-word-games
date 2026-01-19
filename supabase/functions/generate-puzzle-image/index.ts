@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,9 +14,35 @@ serve(async (req) => {
   try {
     const { puzzleId, title, description, category } = await req.json();
     
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
+    }
+
+    // Create Supabase client with service role for storage access
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Check if image already exists in database
+    const { data: existingImage } = await supabase
+      .from("puzzle_images")
+      .select("image_url")
+      .eq("puzzle_id", puzzleId)
+      .single();
+
+    if (existingImage?.image_url) {
+      console.log("Image already exists for puzzle:", puzzleId);
+      return new Response(
+        JSON.stringify({ 
+          puzzleId,
+          imageUrl: existingImage.image_url,
+          success: true,
+          cached: true
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Create a detailed prompt for realistic biblical art
@@ -67,18 +94,57 @@ Aspect ratio: 1:1 square format.`;
     const data = await response.json();
     console.log("AI response received for puzzle:", puzzleId);
 
-    // Extract image from response
-    const imageUrl = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    // Extract image from response (base64)
+    const base64Image = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
     
-    if (!imageUrl) {
+    if (!base64Image) {
       console.error("No image in response:", JSON.stringify(data));
       throw new Error("No image generated");
+    }
+
+    // Extract base64 data (remove data:image/png;base64, prefix)
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+    // Upload to Supabase Storage
+    const fileName = `puzzle-${puzzleId}-${Date.now()}.png`;
+    const { error: uploadError } = await supabase.storage
+      .from("puzzle-images")
+      .upload(fileName, imageBuffer, {
+        contentType: "image/png",
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error("Storage upload error:", uploadError);
+      throw new Error(`Failed to upload image: ${uploadError.message}`);
+    }
+
+    // Get public URL
+    const { data: publicUrlData } = supabase.storage
+      .from("puzzle-images")
+      .getPublicUrl(fileName);
+
+    const publicUrl = publicUrlData.publicUrl;
+    console.log("Image uploaded to storage:", publicUrl);
+
+    // Save to database
+    const { error: dbError } = await supabase
+      .from("puzzle_images")
+      .insert({
+        puzzle_id: puzzleId,
+        image_url: publicUrl
+      });
+
+    if (dbError) {
+      console.error("Database insert error:", dbError);
+      // Image is already in storage, so we can still return it
     }
 
     return new Response(
       JSON.stringify({ 
         puzzleId,
-        imageUrl,
+        imageUrl: publicUrl,
         success: true 
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
