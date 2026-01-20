@@ -13,6 +13,74 @@ interface PuzzlePiece {
   currentPos: number; // -1 means in the pieces area, >= 0 means on the board
 }
 
+// Generate puzzle piece clip-path based on position in grid
+const getPuzzleClipPath = (id: number, gridSize: number = 5): string => {
+  const row = Math.floor(id / gridSize);
+  const col = id % gridSize;
+  
+  const isTop = row === 0;
+  const isBottom = row === gridSize - 1;
+  const isLeft = col === 0;
+  const isRight = col === gridSize - 1;
+  
+  // Alternate tabs based on position
+  const hasTopTab = !isTop && (row + col) % 2 === 0;
+  const hasBottomTab = !isBottom && (row + col) % 2 === 1;
+  const hasLeftTab = !isLeft && (row + col) % 2 === 1;
+  const hasRightTab = !isRight && (row + col) % 2 === 0;
+  
+  // Tab size as percentage
+  const tabSize = 12;
+  const tabDepth = 15;
+  
+  // Build the path
+  let path = '';
+  
+  // Start from top-left
+  path += '0% 0%, ';
+  
+  // Top edge
+  if (hasTopTab) {
+    path += `${50 - tabSize}% 0%, ${50 - tabSize}% -${tabDepth}%, ${50 + tabSize}% -${tabDepth}%, ${50 + tabSize}% 0%, `;
+  } else if (!isTop) {
+    path += `${50 - tabSize}% 0%, ${50 - tabSize}% ${tabDepth}%, ${50 + tabSize}% ${tabDepth}%, ${50 + tabSize}% 0%, `;
+  }
+  
+  // Top-right
+  path += '100% 0%, ';
+  
+  // Right edge
+  if (hasRightTab) {
+    path += `100% ${50 - tabSize}%, ${100 + tabDepth}% ${50 - tabSize}%, ${100 + tabDepth}% ${50 + tabSize}%, 100% ${50 + tabSize}%, `;
+  } else if (!isRight) {
+    path += `100% ${50 - tabSize}%, ${100 - tabDepth}% ${50 - tabSize}%, ${100 - tabDepth}% ${50 + tabSize}%, 100% ${50 + tabSize}%, `;
+  }
+  
+  // Bottom-right
+  path += '100% 100%, ';
+  
+  // Bottom edge
+  if (hasBottomTab) {
+    path += `${50 + tabSize}% 100%, ${50 + tabSize}% ${100 + tabDepth}%, ${50 - tabSize}% ${100 + tabDepth}%, ${50 - tabSize}% 100%, `;
+  } else if (!isBottom) {
+    path += `${50 + tabSize}% 100%, ${50 + tabSize}% ${100 - tabDepth}%, ${50 - tabSize}% ${100 - tabDepth}%, ${50 - tabSize}% 100%, `;
+  }
+  
+  // Bottom-left
+  path += '0% 100%, ';
+  
+  // Left edge
+  if (hasLeftTab) {
+    path += `0% ${50 + tabSize}%, -${tabDepth}% ${50 + tabSize}%, -${tabDepth}% ${50 - tabSize}%, 0% ${50 - tabSize}%`;
+  } else if (!isLeft) {
+    path += `0% ${50 + tabSize}%, ${tabDepth}% ${50 + tabSize}%, ${tabDepth}% ${50 - tabSize}%, 0% ${50 - tabSize}%`;
+  } else {
+    path = path.slice(0, -2); // Remove trailing comma and space
+  }
+  
+  return `polygon(${path})`;
+};
+
 const PuzzleGame = () => {
   const { progress, updatePuzzleProgress } = useGame();
   const { playSelect, playMatch, playSuccess } = useSound();
@@ -258,7 +326,22 @@ const PuzzleGame = () => {
         <div className="text-center flex-1">
           <div className="font-bold text-sm truncate">{puzzleData?.title}</div>
         </div>
-        <div className="font-mono text-lg">{formatTime(timer)}</div>
+        <div className="flex items-center gap-2">
+          {/* View button next to timer */}
+          <Button 
+            variant="outline" 
+            size="icon"
+            className="h-8 w-8"
+            onMouseDown={() => setShowGuide(true)} 
+            onMouseUp={() => setShowGuide(false)} 
+            onMouseLeave={() => setShowGuide(false)}
+            onTouchStart={() => setShowGuide(true)}
+            onTouchEnd={() => setShowGuide(false)}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          <div className="font-mono text-lg">{formatTime(timer)}</div>
+        </div>
       </div>
 
       {/* BOARD AREA - Where pieces are placed */}
@@ -277,7 +360,7 @@ const PuzzleGame = () => {
               />
             </div>
           )}
-          <div className="grid grid-cols-5 gap-1.5 aspect-square">
+          <div className="grid grid-cols-5 gap-0 aspect-square">
             {Array.from({ length: 25 }).map((_, boardPos) => {
               const piece = piecesOnBoard.find(p => p.currentPos === boardPos);
               const isCorrect = piece && piece.correctPos === boardPos;
@@ -289,26 +372,28 @@ const PuzzleGame = () => {
               const pieceCol = piece ? piece.id % 5 : 0;
 
               return (
-                <button
-                  key={boardPos}
-                  onClick={() => handleBoardSlotClick(boardPos)}
-                  className={`aspect-square rounded-md transition-all overflow-hidden relative
-                    ${isEmpty ? 'bg-background/50 border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/10' : ''}
-                    ${isCorrect && showBorders ? 'ring-2 ring-success' : ''}
-                    ${isSelected ? 'ring-3 ring-primary scale-105 z-10 shadow-lg' : ''}
-                    ${!isEmpty && !isSelected ? 'hover:scale-102 hover:shadow-md cursor-pointer' : ''}
-                    ${isEmpty && selectedPiece !== null ? 'border-primary/50 bg-primary/10' : ''}
-                  `}
-                  style={piece && imageUrl ? {
-                    backgroundImage: `url(${imageUrl})`,
-                    backgroundSize: '500%',
-                    backgroundPosition: `${pieceCol * 25}% ${pieceRow * 25}%`,
-                  } : undefined}
-                >
-                  {isEmpty && (
-                    <span className="text-muted-foreground/30 text-xs">{boardPos + 1}</span>
-                  )}
-                </button>
+                <div key={boardPos} className="relative p-0.5">
+                  <button
+                    onClick={() => handleBoardSlotClick(boardPos)}
+                    className={`w-full h-full aspect-square transition-all overflow-visible relative
+                      ${isEmpty ? 'bg-background/50 border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/10 rounded-md' : ''}
+                      ${isCorrect && showBorders ? 'ring-2 ring-success ring-offset-1' : ''}
+                      ${isSelected ? 'ring-3 ring-primary scale-110 z-20 shadow-lg' : ''}
+                      ${!isEmpty && !isSelected ? 'hover:scale-105 hover:z-10 hover:shadow-md cursor-pointer' : ''}
+                      ${isEmpty && selectedPiece !== null ? 'border-primary/50 bg-primary/10' : ''}
+                    `}
+                    style={piece && imageUrl ? {
+                      backgroundImage: `url(${imageUrl})`,
+                      backgroundSize: '500%',
+                      backgroundPosition: `${pieceCol * 25}% ${pieceRow * 25}%`,
+                      clipPath: getPuzzleClipPath(piece.id),
+                    } : undefined}
+                  >
+                    {isEmpty && (
+                      <span className="text-muted-foreground/30 text-xs">{boardPos + 1}</span>
+                    )}
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -326,32 +411,35 @@ const PuzzleGame = () => {
               Todas as peças foram colocadas no tabuleiro!
             </div>
           ) : (
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-5 gap-3">
               {availablePieces.map((piece) => {
                 const isSelected = selectedPiece === piece.id;
                 const pieceRow = Math.floor(piece.id / 5);
                 const pieceCol = piece.id % 5;
 
                 return (
-                  <button
-                    key={piece.id}
-                    onClick={() => handleAvailablePieceClick(piece)}
-                    title={`Peça ${piece.id + 1}`}
-                    className={`aspect-square rounded-lg transition-all overflow-hidden shadow-md
-                      ${isSelected ? 'ring-3 ring-primary scale-110 z-10 shadow-xl' : 'hover:scale-105 hover:shadow-lg'}
-                    `}
-                    style={imageUrl ? {
-                      backgroundImage: `url(${imageUrl})`,
-                      backgroundSize: '500%',
-                      backgroundPosition: `${pieceCol * 25}% ${pieceRow * 25}%`,
-                    } : {
-                      backgroundColor: 'hsl(var(--muted))',
-                    }}
-                  >
-                    {!imageUrl && (
-                      <span className="text-muted-foreground text-sm font-bold">{piece.id + 1}</span>
-                    )}
-                  </button>
+                  <div key={piece.id} className="relative p-1">
+                    <button
+                      onClick={() => handleAvailablePieceClick(piece)}
+                      title={`Peça ${piece.id + 1}`}
+                      className={`w-full aspect-square transition-all overflow-visible shadow-md
+                        ${isSelected ? 'ring-3 ring-primary scale-115 z-10 shadow-xl' : 'hover:scale-110 hover:shadow-lg'}
+                      `}
+                      style={imageUrl ? {
+                        backgroundImage: `url(${imageUrl})`,
+                        backgroundSize: '500%',
+                        backgroundPosition: `${pieceCol * 25}% ${pieceRow * 25}%`,
+                        clipPath: getPuzzleClipPath(piece.id),
+                      } : {
+                        backgroundColor: 'hsl(var(--muted))',
+                        clipPath: getPuzzleClipPath(piece.id),
+                      }}
+                    >
+                      {!imageUrl && (
+                        <span className="text-muted-foreground text-sm font-bold">{piece.id + 1}</span>
+                      )}
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -361,17 +449,6 @@ const PuzzleGame = () => {
 
       {/* Controls */}
       <div className="flex flex-wrap justify-center gap-2 mb-4">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onMouseDown={() => setShowGuide(true)} 
-          onMouseUp={() => setShowGuide(false)} 
-          onMouseLeave={() => setShowGuide(false)}
-          onTouchStart={() => setShowGuide(true)}
-          onTouchEnd={() => setShowGuide(false)}
-        >
-          <Eye className="h-4 w-4 mr-1" /> Ver
-        </Button>
         <Button 
           variant={showBorders ? "default" : "outline"} 
           size="sm" 
@@ -397,38 +474,71 @@ const PuzzleGame = () => {
         </div>
       )}
 
-      {/* Complete Modal */}
+      {/* Complete Modal - Full image without borders */}
       {isComplete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="p-6 text-center max-w-sm w-full animate-scale-in">
-            <div className="text-4xl mb-2">🎉</div>
-            <h3 className="text-xl font-bold text-primary mb-2">Parabéns!</h3>
-            
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="relative max-w-lg w-full animate-scale-in">
+            {/* Full image as the main focus */}
             {imageUrl && (
-              <div className="w-40 h-40 mx-auto mb-3 rounded-lg overflow-hidden shadow-lg">
+              <div className="relative rounded-2xl overflow-hidden shadow-2xl">
                 <img 
                   src={imageUrl} 
                   alt={puzzleData?.title}
-                  className="w-full h-full object-cover"
+                  className="w-full h-auto"
                 />
+                
+                {/* Gradient overlay with info at bottom */}
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-6">
+                  <div className="flex items-center justify-center gap-1 mb-3">
+                    <span className="text-3xl">🎉</span>
+                    <h3 className="text-2xl font-bold text-white">Parabéns!</h3>
+                  </div>
+                  
+                  <p className="font-semibold text-white text-center text-lg mb-1">{puzzleData?.title}</p>
+                  <p className="text-white/80 text-sm text-center italic mb-1">"{puzzleData?.verse}"</p>
+                  <p className="text-white/60 text-xs text-center mb-4">— {puzzleData?.verseReference}</p>
+                  
+                  <div className="flex justify-center gap-1 mb-3">
+                    {[1, 2, 3].map(star => (
+                      <Star 
+                        key={star} 
+                        className={`h-8 w-8 ${star <= (timer < 180 ? 3 : timer < 300 ? 2 : 1) ? 'text-yellow-400 fill-yellow-400' : 'text-white/30'}`} 
+                      />
+                    ))}
+                  </div>
+                  <p className="text-white/80 text-sm text-center mb-4">Tempo: {formatTime(timer)}</p>
+                  
+                  <Button 
+                    onClick={() => setSelectedPuzzle(null)} 
+                    className="w-full bg-white text-black hover:bg-white/90"
+                  >
+                    Continuar
+                  </Button>
+                </div>
               </div>
             )}
             
-            <p className="font-medium mb-2">{puzzleData?.title}</p>
-            <p className="text-muted-foreground text-sm mb-2 italic">"{puzzleData?.verse}"</p>
-            <p className="text-xs mb-4 text-muted-foreground">— {puzzleData?.verseReference}</p>
-            
-            <div className="flex justify-center gap-1 mb-4">
-              {[1, 2, 3].map(star => (
-                <Star 
-                  key={star} 
-                  className={`h-8 w-8 ${star <= (timer < 180 ? 3 : timer < 300 ? 2 : 1) ? 'text-secondary fill-secondary' : 'text-muted'}`} 
-                />
-              ))}
-            </div>
-            <p className="text-sm mb-4">Tempo: {formatTime(timer)}</p>
-            <Button onClick={() => setSelectedPuzzle(null)} className="w-full">Continuar</Button>
-          </Card>
+            {/* Fallback if no image */}
+            {!imageUrl && (
+              <Card className="p-6 text-center">
+                <div className="text-4xl mb-2">🎉</div>
+                <h3 className="text-xl font-bold text-primary mb-2">Parabéns!</h3>
+                <p className="font-medium mb-2">{puzzleData?.title}</p>
+                <p className="text-muted-foreground text-sm mb-2 italic">"{puzzleData?.verse}"</p>
+                <p className="text-xs mb-4 text-muted-foreground">— {puzzleData?.verseReference}</p>
+                <div className="flex justify-center gap-1 mb-4">
+                  {[1, 2, 3].map(star => (
+                    <Star 
+                      key={star} 
+                      className={`h-8 w-8 ${star <= (timer < 180 ? 3 : timer < 300 ? 2 : 1) ? 'text-secondary fill-secondary' : 'text-muted'}`} 
+                    />
+                  ))}
+                </div>
+                <p className="text-sm mb-4">Tempo: {formatTime(timer)}</p>
+                <Button onClick={() => setSelectedPuzzle(null)} className="w-full">Continuar</Button>
+              </Card>
+            )}
+          </div>
         </div>
       )}
     </div>
