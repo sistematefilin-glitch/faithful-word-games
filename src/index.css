@@ -203,6 +203,45 @@
   }
 }
 
+/* Puzzle Reveal Animation */
+@keyframes piece-glow {
+  0% {
+    box-shadow: 0 0 0 hsl(var(--secondary) / 0);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow: 0 0 20px hsl(var(--secondary) / 0.8), 0 0 40px hsl(var(--secondary) / 0.4);
+    filter: brightness(1.2);
+  }
+  100% {
+    box-shadow: 0 0 10px hsl(var(--secondary) / 0.5);
+    filter: brightness(1.1);
+  }
+}
+
+@keyframes divine-reveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+}
+
+.animate-piece-glow {
+  animation: piece-glow 0.6s ease-out forwards;
+}
+
+.animate-divine-reveal {
+  animation: divine-reveal 1s ease-out forwards;
+}
+
 /* Tile Match Game Specific Styles */
 .tile-3d {
   transform-style: preserve-3d;
