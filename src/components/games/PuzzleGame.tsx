@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useGame } from '@/contexts/GameContext';
@@ -6,6 +6,8 @@ import { useSound } from '@/hooks/useSound';
 import { usePuzzleImage, fetchExistingPuzzleImages } from '@/hooks/usePuzzleImage';
 import { PUZZLE_IMAGES } from '@/data/puzzleData';
 import { ArrowLeft, Eye, RotateCcw, Star, Loader2, Grid3X3, HelpCircle } from 'lucide-react';
+
+type RevealPhase = 'none' | 'assembling' | 'merging' | 'complete';
 
 interface PuzzlePiece {
   id: number;
@@ -93,6 +95,8 @@ const PuzzleGame = () => {
   const [showBorders, setShowBorders] = useState(true);
   const [filter, setFilter] = useState<'all' | 'AT' | 'NT'>('all');
   const [existingImages, setExistingImages] = useState<Record<number, string>>({});
+  const [revealPhase, setRevealPhase] = useState<RevealPhase>('none');
+  const revealTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
 
   const puzzleData = selectedPuzzle ? PUZZLE_IMAGES.find(p => p.id === selectedPuzzle) : null;
   const { imageUrl, isLoading: isImageLoading } = usePuzzleImage(selectedPuzzle);
@@ -111,10 +115,15 @@ const PuzzleGame = () => {
   }, [selectedPuzzle, isComplete, isImageLoading, imageUrl]);
 
   const startPuzzle = (id: number) => {
+    // Clear any existing reveal timeouts
+    revealTimeoutsRef.current.forEach(t => clearTimeout(t));
+    revealTimeoutsRef.current = [];
+    
     setSelectedPuzzle(id);
     setTimer(0);
     setIsComplete(false);
     setSelectedPiece(null);
+    setRevealPhase('none');
     
     // Create pieces - all start in the "available" area (currentPos = -1)
     const newPieces: PuzzlePiece[] = Array.from({ length: 25 }, (_, i) => ({
@@ -131,6 +140,13 @@ const PuzzleGame = () => {
     
     setPieces(newPieces);
   };
+  
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      revealTimeoutsRef.current.forEach(t => clearTimeout(t));
+    };
+  }, []);
 
   const handleBoardSlotClick = (boardPos: number) => {
     if (isComplete || isImageLoading) return;
@@ -206,20 +222,36 @@ const PuzzleGame = () => {
     }
   };
 
-  const checkCompletion = (currentPieces: PuzzlePiece[]) => {
+  const checkCompletion = useCallback((currentPieces: PuzzlePiece[]) => {
+    if (revealPhase !== 'none') return;
+    
     const allCorrect = currentPieces.every(p => p.currentPos === p.correctPos);
     if (allCorrect) {
-      setIsComplete(true);
       playSuccess();
-      const stars = timer < 180 ? 3 : timer < 300 ? 2 : 1;
-      updatePuzzleProgress(selectedPuzzle!, timer, stars);
+      
+      // Clear any existing timeouts
+      revealTimeoutsRef.current.forEach(t => clearTimeout(t));
+      revealTimeoutsRef.current = [];
+      
+      // Start reveal animation sequence
+      setRevealPhase('assembling');
+      
+      const timeout1 = setTimeout(() => setRevealPhase('merging'), 800);
+      const timeout2 = setTimeout(() => {
+        setRevealPhase('complete');
+        setIsComplete(true);
+        const stars = timer < 180 ? 3 : timer < 300 ? 2 : 1;
+        updatePuzzleProgress(selectedPuzzle!, timer, stars);
+      }, 1800);
+      
+      revealTimeoutsRef.current = [timeout1, timeout2];
     } else {
       const correctCount = currentPieces.filter(p => p.currentPos === p.correctPos).length;
       if (correctCount > 0) {
         playMatch();
       }
     }
-  };
+  }, [playSuccess, playMatch, timer, selectedPuzzle, updatePuzzleProgress, revealPhase]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -350,8 +382,8 @@ const PuzzleGame = () => {
           <Grid3X3 className="h-3 w-3" />
           Tabuleiro ({correctCount}/25 corretas)
         </div>
-        <div className="relative bg-muted/50 rounded-xl p-3 border-2 border-dashed border-muted-foreground/30 max-w-md mx-auto">
-          {showGuide && imageUrl && (
+        <div className={`relative bg-muted/50 rounded-xl p-3 border-2 border-dashed border-muted-foreground/30 max-w-md mx-auto transition-all duration-700 ${revealPhase === 'merging' || revealPhase === 'complete' ? 'p-0 border-0 overflow-hidden' : ''}`}>
+          {showGuide && imageUrl && revealPhase === 'none' && (
             <div className="absolute inset-2 z-10 rounded-lg overflow-hidden pointer-events-none">
               <img 
                 src={imageUrl} 
@@ -360,36 +392,53 @@ const PuzzleGame = () => {
               />
             </div>
           )}
-          <div className="grid grid-cols-5 gap-0 aspect-square">
+          
+          {/* Divine glow overlay during reveal */}
+          {(revealPhase === 'assembling' || revealPhase === 'merging') && (
+            <div 
+              className="absolute inset-0 pointer-events-none rounded-xl z-20 animate-divine-reveal"
+              style={{
+                background: 'radial-gradient(circle at center, hsl(var(--secondary) / 0.5) 0%, transparent 70%)',
+              }}
+            />
+          )}
+          
+          <div className={`grid grid-cols-5 aspect-square transition-all duration-700 ${revealPhase === 'merging' || revealPhase === 'complete' ? 'gap-0' : 'gap-0'}`}>
             {Array.from({ length: 25 }).map((_, boardPos) => {
               const piece = piecesOnBoard.find(p => p.currentPos === boardPos);
               const isCorrect = piece && piece.correctPos === boardPos;
               const isSelected = piece && selectedPiece === piece.id;
               const isEmpty = !piece;
+              const isRevealing = revealPhase !== 'none';
+              const isMerging = revealPhase === 'merging' || revealPhase === 'complete';
 
               // Calculate background position for the piece
               const pieceRow = piece ? Math.floor(piece.id / 5) : 0;
               const pieceCol = piece ? piece.id % 5 : 0;
 
               return (
-                <div key={boardPos} className="relative p-0.5">
+                <div key={boardPos} className={`relative transition-all duration-700 ${isMerging ? 'p-0' : 'p-0.5'}`}>
                   <button
-                    onClick={() => handleBoardSlotClick(boardPos)}
+                    onClick={() => !isRevealing && handleBoardSlotClick(boardPos)}
+                    disabled={isRevealing}
                     className={`w-full h-full aspect-square transition-all overflow-visible relative
                       ${isEmpty ? 'bg-background/50 border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/10 rounded-md' : ''}
-                      ${isCorrect && showBorders ? 'ring-2 ring-success ring-offset-1' : ''}
-                      ${isSelected ? 'ring-3 ring-primary scale-110 z-20 shadow-lg' : ''}
-                      ${!isEmpty && !isSelected ? 'hover:scale-105 hover:z-10 hover:shadow-md cursor-pointer' : ''}
-                      ${isEmpty && selectedPiece !== null ? 'border-primary/50 bg-primary/10' : ''}
+                      ${isCorrect && showBorders && !isRevealing ? 'ring-2 ring-success ring-offset-1' : ''}
+                      ${isSelected && !isRevealing ? 'ring-3 ring-primary scale-110 z-20 shadow-lg' : ''}
+                      ${!isEmpty && !isSelected && !isRevealing ? 'hover:scale-105 hover:z-10 hover:shadow-md cursor-pointer' : ''}
+                      ${isEmpty && selectedPiece !== null && !isRevealing ? 'border-primary/50 bg-primary/10' : ''}
+                      ${revealPhase === 'assembling' && piece ? 'animate-piece-glow' : ''}
+                      ${isRevealing ? 'cursor-default' : ''}
                     `}
                     style={piece && imageUrl ? {
                       backgroundImage: `url(${imageUrl})`,
                       backgroundSize: '500%',
                       backgroundPosition: `${pieceCol * 25}% ${pieceRow * 25}%`,
-                      clipPath: getPuzzleClipPath(piece.id),
+                      clipPath: isMerging ? 'none' : getPuzzleClipPath(piece.id),
+                      transition: 'clip-path 0.7s ease-out, transform 0.3s ease-out',
                     } : undefined}
                   >
-                    {isEmpty && (
+                    {isEmpty && !isRevealing && (
                       <span className="text-muted-foreground/30 text-xs">{boardPos + 1}</span>
                     )}
                   </button>
