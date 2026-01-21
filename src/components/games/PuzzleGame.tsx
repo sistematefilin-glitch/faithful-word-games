@@ -15,72 +15,58 @@ interface PuzzlePiece {
   currentPos: number; // -1 means in the pieces area, >= 0 means on the board
 }
 
-// Generate puzzle piece clip-path based on position in grid
-const getPuzzleClipPath = (id: number, gridSize: number = 5): string => {
+// Generate CSS clip-path polygon for jigsaw puzzle piece with curved appearance
+const getJigsawClipPath = (id: number, gridSize: number = 5): string => {
   const row = Math.floor(id / gridSize);
   const col = id % gridSize;
   
-  const isTop = row === 0;
-  const isBottom = row === gridSize - 1;
-  const isLeft = col === 0;
-  const isRight = col === gridSize - 1;
+  const isTopEdge = row === 0;
+  const isBottomEdge = row === gridSize - 1;
+  const isLeftEdge = col === 0;
+  const isRightEdge = col === gridSize - 1;
   
-  // Alternate tabs based on position
-  const hasTopTab = !isTop && (row + col) % 2 === 0;
-  const hasBottomTab = !isBottom && (row + col) % 2 === 1;
-  const hasLeftTab = !isLeft && (row + col) % 2 === 1;
-  const hasRightTab = !isRight && (row + col) % 2 === 0;
-  
-  // Tab size as percentage
-  const tabSize = 12;
-  const tabDepth = 15;
-  
-  // Build the path
-  let path = '';
-  
-  // Start from top-left
-  path += '0% 0%, ';
+  // Alternate pattern - creates interlocking effect
+  const topSlot = !isTopEdge && (row + col) % 2 === 0;
+  const rightSlot = !isRightEdge && (row + col) % 2 === 1;
+  const bottomSlot = !isBottomEdge && (row + col) % 2 === 1;
+  const leftSlot = !isLeftEdge && (row + col) % 2 === 0;
+
+  // Slot dimensions
+  const w = 12; // Half-width of slot
+  const d = 16; // Depth of slot
+  const c = 4;  // Curve offset for rounded look
+
+  const points: string[] = [];
   
   // Top edge
-  if (hasTopTab) {
-    path += `${50 - tabSize}% 0%, ${50 - tabSize}% -${tabDepth}%, ${50 + tabSize}% -${tabDepth}%, ${50 + tabSize}% 0%, `;
-  } else if (!isTop) {
-    path += `${50 - tabSize}% 0%, ${50 - tabSize}% ${tabDepth}%, ${50 + tabSize}% ${tabDepth}%, ${50 + tabSize}% 0%, `;
+  points.push('0% 0%');
+  if (topSlot) {
+    points.push(`${50-w-c}% 0%`, `${50-w}% ${c}%`, `${50-w}% ${d-c}%`, `${50-w+c}% ${d}%`);
+    points.push(`${50+w-c}% ${d}%`, `${50+w}% ${d-c}%`, `${50+w}% ${c}%`, `${50+w+c}% 0%`);
   }
-  
-  // Top-right
-  path += '100% 0%, ';
+  points.push('100% 0%');
   
   // Right edge
-  if (hasRightTab) {
-    path += `100% ${50 - tabSize}%, ${100 + tabDepth}% ${50 - tabSize}%, ${100 + tabDepth}% ${50 + tabSize}%, 100% ${50 + tabSize}%, `;
-  } else if (!isRight) {
-    path += `100% ${50 - tabSize}%, ${100 - tabDepth}% ${50 - tabSize}%, ${100 - tabDepth}% ${50 + tabSize}%, 100% ${50 + tabSize}%, `;
+  if (rightSlot) {
+    points.push(`100% ${50-w-c}%`, `${100-c}% ${50-w}%`, `${100-d+c}% ${50-w}%`, `${100-d}% ${50-w+c}%`);
+    points.push(`${100-d}% ${50+w-c}%`, `${100-d+c}% ${50+w}%`, `${100-c}% ${50+w}%`, `100% ${50+w+c}%`);
   }
-  
-  // Bottom-right
-  path += '100% 100%, ';
+  points.push('100% 100%');
   
   // Bottom edge
-  if (hasBottomTab) {
-    path += `${50 + tabSize}% 100%, ${50 + tabSize}% ${100 + tabDepth}%, ${50 - tabSize}% ${100 + tabDepth}%, ${50 - tabSize}% 100%, `;
-  } else if (!isBottom) {
-    path += `${50 + tabSize}% 100%, ${50 + tabSize}% ${100 - tabDepth}%, ${50 - tabSize}% ${100 - tabDepth}%, ${50 - tabSize}% 100%, `;
+  if (bottomSlot) {
+    points.push(`${50+w+c}% 100%`, `${50+w}% ${100-c}%`, `${50+w}% ${100-d+c}%`, `${50+w-c}% ${100-d}%`);
+    points.push(`${50-w+c}% ${100-d}%`, `${50-w}% ${100-d+c}%`, `${50-w}% ${100-c}%`, `${50-w-c}% 100%`);
   }
-  
-  // Bottom-left
-  path += '0% 100%, ';
+  points.push('0% 100%');
   
   // Left edge
-  if (hasLeftTab) {
-    path += `0% ${50 + tabSize}%, -${tabDepth}% ${50 + tabSize}%, -${tabDepth}% ${50 - tabSize}%, 0% ${50 - tabSize}%`;
-  } else if (!isLeft) {
-    path += `0% ${50 + tabSize}%, ${tabDepth}% ${50 + tabSize}%, ${tabDepth}% ${50 - tabSize}%, 0% ${50 - tabSize}%`;
-  } else {
-    path = path.slice(0, -2); // Remove trailing comma and space
+  if (leftSlot) {
+    points.push(`0% ${50+w+c}%`, `${c}% ${50+w}%`, `${d-c}% ${50+w}%`, `${d}% ${50+w-c}%`);
+    points.push(`${d}% ${50-w+c}%`, `${d-c}% ${50-w}%`, `${c}% ${50-w}%`, `0% ${50-w-c}%`);
   }
   
-  return `polygon(${path})`;
+  return `polygon(${points.join(', ')})`;
 };
 
 const PuzzleGame = () => {
@@ -434,7 +420,7 @@ const PuzzleGame = () => {
                       backgroundImage: `url(${imageUrl})`,
                       backgroundSize: '500%',
                       backgroundPosition: `${pieceCol * 25}% ${pieceRow * 25}%`,
-                      clipPath: isMerging ? 'none' : getPuzzleClipPath(piece.id),
+                      clipPath: isMerging ? 'none' : getJigsawClipPath(piece.id),
                       transition: 'clip-path 0.7s ease-out, transform 0.3s ease-out',
                     } : undefined}
                   >
@@ -478,10 +464,10 @@ const PuzzleGame = () => {
                         backgroundImage: `url(${imageUrl})`,
                         backgroundSize: '500%',
                         backgroundPosition: `${pieceCol * 25}% ${pieceRow * 25}%`,
-                        clipPath: getPuzzleClipPath(piece.id),
+                        clipPath: getJigsawClipPath(piece.id),
                       } : {
                         backgroundColor: 'hsl(var(--muted))',
-                        clipPath: getPuzzleClipPath(piece.id),
+                        clipPath: getJigsawClipPath(piece.id),
                       }}
                     >
                       {!imageUrl && (
