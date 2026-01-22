@@ -15,59 +15,205 @@ interface PuzzlePiece {
   currentPos: number; // -1 means in the pieces area, >= 0 means on the board
 }
 
-// Generate CSS clip-path polygon for jigsaw puzzle piece with curved appearance
+// Generate jigsaw puzzle clip-path with realistic rounded tabs using polygon with many points
+// This simulates curves by using many small line segments
 const getJigsawClipPath = (id: number, gridSize: number = 5): string => {
   const row = Math.floor(id / gridSize);
   const col = id % gridSize;
   
-  const isTopEdge = row === 0;
-  const isBottomEdge = row === gridSize - 1;
-  const isLeftEdge = col === 0;
-  const isRightEdge = col === gridSize - 1;
+  // Edge detection
+  const isTop = row === 0;
+  const isBottom = row === gridSize - 1;
+  const isLeft = col === 0;
+  const isRight = col === gridSize - 1;
   
-  // Alternate pattern - creates interlocking effect
-  const topSlot = !isTopEdge && (row + col) % 2 === 0;
-  const rightSlot = !isRightEdge && (row + col) % 2 === 1;
-  const bottomSlot = !isBottomEdge && (row + col) % 2 === 1;
-  const leftSlot = !isLeftEdge && (row + col) % 2 === 0;
-
-  // Slot dimensions
-  const w = 12; // Half-width of slot
-  const d = 16; // Depth of slot
-  const c = 4;  // Curve offset for rounded look
+  // Alternating pattern for interlocking
+  const topHasTab = !isTop && (row + col) % 2 === 0;
+  const rightHasTab = !isRight && (row + col + 1) % 2 === 0;
+  const bottomHasTab = !isBottom && (row + col + 1) % 2 === 0;
+  const leftHasTab = !isLeft && (row + col) % 2 === 0;
 
   const points: string[] = [];
   
-  // Top edge
+  // Tab parameters (in percentage, relative to 100% piece size)
+  const tabWidth = 28;     // Width of the tab opening at base
+  const tabDepth = 16;     // How far the tab/slot extends
+  const bulbSize = 11;     // Radius of the rounded bulb
+  const neckWidth = 7;     // Half-width of the narrower neck
+  const steps = 12;        // Points per curve segment
+  
+  // Helper function to add points for a tab or slot
+  const addTabPoints = (
+    edge: 'top' | 'right' | 'bottom' | 'left',
+    hasTab: boolean
+  ) => {
+    const dir = hasTab ? -1 : 1; // -1 for tab (outward), 1 for slot (inward)
+    
+    if (edge === 'top') {
+      const cx = 50;
+      const baseY = 0;
+      
+      // Left neck curve
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const angle = (Math.PI / 2) * t;
+        const x = cx - tabWidth/2 + neckWidth * (1 - Math.cos(angle));
+        const y = baseY + dir * (tabDepth - bulbSize) * Math.sin(angle) * -1;
+        points.push(`${x}% ${y}%`);
+      }
+      
+      // Bulb (semicircle)
+      const bulbCenterX = cx;
+      const bulbCenterY = baseY + dir * -(tabDepth - bulbSize);
+      for (let i = 0; i <= steps * 2; i++) {
+        const t = i / (steps * 2);
+        const angle = Math.PI + Math.PI * t * dir;
+        const x = bulbCenterX + bulbSize * Math.cos(angle - Math.PI/2);
+        const y = bulbCenterY + bulbSize * Math.sin(angle - Math.PI/2) * dir * -1;
+        points.push(`${x}% ${y}%`);
+      }
+      
+      // Right neck curve
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const angle = (Math.PI / 2) * (1 - t);
+        const x = cx + tabWidth/2 - neckWidth * (1 - Math.cos(angle));
+        const y = baseY + dir * (tabDepth - bulbSize) * Math.sin(angle) * -1;
+        points.push(`${x}% ${y}%`);
+      }
+    }
+    
+    if (edge === 'right') {
+      const cy = 50;
+      const baseX = 100;
+      
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const angle = (Math.PI / 2) * t;
+        const x = baseX + dir * (tabDepth - bulbSize) * Math.sin(angle);
+        const y = cy - tabWidth/2 + neckWidth * (1 - Math.cos(angle));
+        points.push(`${x}% ${y}%`);
+      }
+      
+      const bulbCenterX = baseX + dir * (tabDepth - bulbSize);
+      const bulbCenterY = cy;
+      for (let i = 0; i <= steps * 2; i++) {
+        const t = i / (steps * 2);
+        const angle = Math.PI * t;
+        const x = bulbCenterX + bulbSize * Math.sin(angle) * dir;
+        const y = bulbCenterY - bulbSize * Math.cos(angle);
+        points.push(`${x}% ${y}%`);
+      }
+      
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const angle = (Math.PI / 2) * (1 - t);
+        const x = baseX + dir * (tabDepth - bulbSize) * Math.sin(angle);
+        const y = cy + tabWidth/2 - neckWidth * (1 - Math.cos(angle));
+        points.push(`${x}% ${y}%`);
+      }
+    }
+    
+    if (edge === 'bottom') {
+      const cx = 50;
+      const baseY = 100;
+      
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const angle = (Math.PI / 2) * t;
+        const x = cx + tabWidth/2 - neckWidth * (1 - Math.cos(angle));
+        const y = baseY + dir * (tabDepth - bulbSize) * Math.sin(angle);
+        points.push(`${x}% ${y}%`);
+      }
+      
+      const bulbCenterX = cx;
+      const bulbCenterY = baseY + dir * (tabDepth - bulbSize);
+      for (let i = 0; i <= steps * 2; i++) {
+        const t = i / (steps * 2);
+        const angle = Math.PI * t;
+        const x = bulbCenterX + bulbSize * Math.cos(angle);
+        const y = bulbCenterY + bulbSize * Math.sin(angle) * dir;
+        points.push(`${x}% ${y}%`);
+      }
+      
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const angle = (Math.PI / 2) * (1 - t);
+        const x = cx - tabWidth/2 + neckWidth * (1 - Math.cos(angle));
+        const y = baseY + dir * (tabDepth - bulbSize) * Math.sin(angle);
+        points.push(`${x}% ${y}%`);
+      }
+    }
+    
+    if (edge === 'left') {
+      const cy = 50;
+      const baseX = 0;
+      
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const angle = (Math.PI / 2) * t;
+        const x = baseX + dir * -(tabDepth - bulbSize) * Math.sin(angle);
+        const y = cy + tabWidth/2 - neckWidth * (1 - Math.cos(angle));
+        points.push(`${x}% ${y}%`);
+      }
+      
+      const bulbCenterX = baseX + dir * -(tabDepth - bulbSize);
+      const bulbCenterY = cy;
+      for (let i = 0; i <= steps * 2; i++) {
+        const t = i / (steps * 2);
+        const angle = Math.PI * t;
+        const x = bulbCenterX - bulbSize * Math.sin(angle) * dir;
+        const y = bulbCenterY + bulbSize * Math.cos(angle);
+        points.push(`${x}% ${y}%`);
+      }
+      
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const angle = (Math.PI / 2) * (1 - t);
+        const x = baseX + dir * -(tabDepth - bulbSize) * Math.sin(angle);
+        const y = cy - tabWidth/2 + neckWidth * (1 - Math.cos(angle));
+        points.push(`${x}% ${y}%`);
+      }
+    }
+  };
+  
+  // Build polygon - clockwise from top-left
   points.push('0% 0%');
-  if (topSlot) {
-    points.push(`${50-w-c}% 0%`, `${50-w}% ${c}%`, `${50-w}% ${d-c}%`, `${50-w+c}% ${d}%`);
-    points.push(`${50+w-c}% ${d}%`, `${50+w}% ${d-c}%`, `${50+w}% ${c}%`, `${50+w+c}% 0%`);
+  
+  // Top edge
+  if (!isTop) {
+    points.push(`${50 - tabWidth/2}% 0%`);
+    addTabPoints('top', topHasTab);
+    points.push(`${50 + tabWidth/2}% 0%`);
   }
   points.push('100% 0%');
   
   // Right edge
-  if (rightSlot) {
-    points.push(`100% ${50-w-c}%`, `${100-c}% ${50-w}%`, `${100-d+c}% ${50-w}%`, `${100-d}% ${50-w+c}%`);
-    points.push(`${100-d}% ${50+w-c}%`, `${100-d+c}% ${50+w}%`, `${100-c}% ${50+w}%`, `100% ${50+w+c}%`);
+  if (!isRight) {
+    points.push(`100% ${50 - tabWidth/2}%`);
+    addTabPoints('right', rightHasTab);
+    points.push(`100% ${50 + tabWidth/2}%`);
   }
   points.push('100% 100%');
   
   // Bottom edge
-  if (bottomSlot) {
-    points.push(`${50+w+c}% 100%`, `${50+w}% ${100-c}%`, `${50+w}% ${100-d+c}%`, `${50+w-c}% ${100-d}%`);
-    points.push(`${50-w+c}% ${100-d}%`, `${50-w}% ${100-d+c}%`, `${50-w}% ${100-c}%`, `${50-w-c}% 100%`);
+  if (!isBottom) {
+    points.push(`${50 + tabWidth/2}% 100%`);
+    addTabPoints('bottom', bottomHasTab);
+    points.push(`${50 - tabWidth/2}% 100%`);
   }
   points.push('0% 100%');
   
   // Left edge
-  if (leftSlot) {
-    points.push(`0% ${50+w+c}%`, `${c}% ${50+w}%`, `${d-c}% ${50+w}%`, `${d}% ${50+w-c}%`);
-    points.push(`${d}% ${50-w+c}%`, `${d-c}% ${50-w}%`, `${c}% ${50-w}%`, `0% ${50-w-c}%`);
+  if (!isLeft) {
+    points.push(`0% ${50 + tabWidth/2}%`);
+    addTabPoints('left', leftHasTab);
+    points.push(`0% ${50 - tabWidth/2}%`);
   }
   
   return `polygon(${points.join(', ')})`;
 };
+
 
 const PuzzleGame = () => {
   const { progress, updatePuzzleProgress } = useGame();
@@ -333,7 +479,6 @@ const PuzzleGame = () => {
     );
   }
 
-  // Puzzle Game Screen with Board and Pieces Areas
   return (
     <div className="p-2 sm:p-4 max-w-2xl mx-auto">
       {/* Header */}
