@@ -6,6 +6,7 @@ import { useSound } from '@/hooks/useSound';
 import { usePuzzleImage, fetchExistingPuzzleImages } from '@/hooks/usePuzzleImage';
 import { PUZZLE_IMAGES } from '@/data/puzzleData';
 import { ArrowLeft, Eye, RotateCcw, Star, Loader2, Grid3X3, HelpCircle } from 'lucide-react';
+import { PuzzlePieceSvg } from '@/components/games/PuzzlePieceSvg';
 
 type RevealPhase = 'none' | 'assembling' | 'merging' | 'complete';
 
@@ -14,206 +15,6 @@ interface PuzzlePiece {
   correctPos: number;
   currentPos: number; // -1 means in the pieces area, >= 0 means on the board
 }
-
-// Generate jigsaw puzzle clip-path with realistic rounded tabs using polygon with many points
-// This simulates curves by using many small line segments
-const getJigsawClipPath = (id: number, gridSize: number = 5): string => {
-  const row = Math.floor(id / gridSize);
-  const col = id % gridSize;
-  
-  // Edge detection
-  const isTop = row === 0;
-  const isBottom = row === gridSize - 1;
-  const isLeft = col === 0;
-  const isRight = col === gridSize - 1;
-  
-  // Alternating pattern for interlocking
-  const topHasTab = !isTop && (row + col) % 2 === 0;
-  const rightHasTab = !isRight && (row + col + 1) % 2 === 0;
-  const bottomHasTab = !isBottom && (row + col + 1) % 2 === 0;
-  const leftHasTab = !isLeft && (row + col) % 2 === 0;
-
-  const points: string[] = [];
-  
-  // Tab parameters (in percentage, relative to 100% piece size)
-  const tabWidth = 28;     // Width of the tab opening at base
-  const tabDepth = 16;     // How far the tab/slot extends
-  const bulbSize = 11;     // Radius of the rounded bulb
-  const neckWidth = 7;     // Half-width of the narrower neck
-  const steps = 12;        // Points per curve segment
-  
-  // Helper function to add points for a tab or slot
-  const addTabPoints = (
-    edge: 'top' | 'right' | 'bottom' | 'left',
-    hasTab: boolean
-  ) => {
-    const dir = hasTab ? -1 : 1; // -1 for tab (outward), 1 for slot (inward)
-    
-    if (edge === 'top') {
-      const cx = 50;
-      const baseY = 0;
-      
-      // Left neck curve
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const angle = (Math.PI / 2) * t;
-        const x = cx - tabWidth/2 + neckWidth * (1 - Math.cos(angle));
-        const y = baseY + dir * (tabDepth - bulbSize) * Math.sin(angle) * -1;
-        points.push(`${x}% ${y}%`);
-      }
-      
-      // Bulb (semicircle)
-      const bulbCenterX = cx;
-      const bulbCenterY = baseY + dir * -(tabDepth - bulbSize);
-      for (let i = 0; i <= steps * 2; i++) {
-        const t = i / (steps * 2);
-        const angle = Math.PI + Math.PI * t * dir;
-        const x = bulbCenterX + bulbSize * Math.cos(angle - Math.PI/2);
-        const y = bulbCenterY + bulbSize * Math.sin(angle - Math.PI/2) * dir * -1;
-        points.push(`${x}% ${y}%`);
-      }
-      
-      // Right neck curve
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const angle = (Math.PI / 2) * (1 - t);
-        const x = cx + tabWidth/2 - neckWidth * (1 - Math.cos(angle));
-        const y = baseY + dir * (tabDepth - bulbSize) * Math.sin(angle) * -1;
-        points.push(`${x}% ${y}%`);
-      }
-    }
-    
-    if (edge === 'right') {
-      const cy = 50;
-      const baseX = 100;
-      
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const angle = (Math.PI / 2) * t;
-        const x = baseX + dir * (tabDepth - bulbSize) * Math.sin(angle);
-        const y = cy - tabWidth/2 + neckWidth * (1 - Math.cos(angle));
-        points.push(`${x}% ${y}%`);
-      }
-      
-      const bulbCenterX = baseX + dir * (tabDepth - bulbSize);
-      const bulbCenterY = cy;
-      for (let i = 0; i <= steps * 2; i++) {
-        const t = i / (steps * 2);
-        const angle = Math.PI * t;
-        const x = bulbCenterX + bulbSize * Math.sin(angle) * dir;
-        const y = bulbCenterY - bulbSize * Math.cos(angle);
-        points.push(`${x}% ${y}%`);
-      }
-      
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const angle = (Math.PI / 2) * (1 - t);
-        const x = baseX + dir * (tabDepth - bulbSize) * Math.sin(angle);
-        const y = cy + tabWidth/2 - neckWidth * (1 - Math.cos(angle));
-        points.push(`${x}% ${y}%`);
-      }
-    }
-    
-    if (edge === 'bottom') {
-      const cx = 50;
-      const baseY = 100;
-      
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const angle = (Math.PI / 2) * t;
-        const x = cx + tabWidth/2 - neckWidth * (1 - Math.cos(angle));
-        const y = baseY + dir * (tabDepth - bulbSize) * Math.sin(angle);
-        points.push(`${x}% ${y}%`);
-      }
-      
-      const bulbCenterX = cx;
-      const bulbCenterY = baseY + dir * (tabDepth - bulbSize);
-      for (let i = 0; i <= steps * 2; i++) {
-        const t = i / (steps * 2);
-        const angle = Math.PI * t;
-        const x = bulbCenterX + bulbSize * Math.cos(angle);
-        const y = bulbCenterY + bulbSize * Math.sin(angle) * dir;
-        points.push(`${x}% ${y}%`);
-      }
-      
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const angle = (Math.PI / 2) * (1 - t);
-        const x = cx - tabWidth/2 + neckWidth * (1 - Math.cos(angle));
-        const y = baseY + dir * (tabDepth - bulbSize) * Math.sin(angle);
-        points.push(`${x}% ${y}%`);
-      }
-    }
-    
-    if (edge === 'left') {
-      const cy = 50;
-      const baseX = 0;
-      
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const angle = (Math.PI / 2) * t;
-        const x = baseX + dir * -(tabDepth - bulbSize) * Math.sin(angle);
-        const y = cy + tabWidth/2 - neckWidth * (1 - Math.cos(angle));
-        points.push(`${x}% ${y}%`);
-      }
-      
-      const bulbCenterX = baseX + dir * -(tabDepth - bulbSize);
-      const bulbCenterY = cy;
-      for (let i = 0; i <= steps * 2; i++) {
-        const t = i / (steps * 2);
-        const angle = Math.PI * t;
-        const x = bulbCenterX - bulbSize * Math.sin(angle) * dir;
-        const y = bulbCenterY + bulbSize * Math.cos(angle);
-        points.push(`${x}% ${y}%`);
-      }
-      
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const angle = (Math.PI / 2) * (1 - t);
-        const x = baseX + dir * -(tabDepth - bulbSize) * Math.sin(angle);
-        const y = cy - tabWidth/2 + neckWidth * (1 - Math.cos(angle));
-        points.push(`${x}% ${y}%`);
-      }
-    }
-  };
-  
-  // Build polygon - clockwise from top-left
-  points.push('0% 0%');
-  
-  // Top edge
-  if (!isTop) {
-    points.push(`${50 - tabWidth/2}% 0%`);
-    addTabPoints('top', topHasTab);
-    points.push(`${50 + tabWidth/2}% 0%`);
-  }
-  points.push('100% 0%');
-  
-  // Right edge
-  if (!isRight) {
-    points.push(`100% ${50 - tabWidth/2}%`);
-    addTabPoints('right', rightHasTab);
-    points.push(`100% ${50 + tabWidth/2}%`);
-  }
-  points.push('100% 100%');
-  
-  // Bottom edge
-  if (!isBottom) {
-    points.push(`${50 + tabWidth/2}% 100%`);
-    addTabPoints('bottom', bottomHasTab);
-    points.push(`${50 - tabWidth/2}% 100%`);
-  }
-  points.push('0% 100%');
-  
-  // Left edge
-  if (!isLeft) {
-    points.push(`0% ${50 + tabWidth/2}%`);
-    addTabPoints('left', leftHasTab);
-    points.push(`0% ${50 - tabWidth/2}%`);
-  }
-  
-  return `polygon(${points.join(', ')})`;
-};
-
 
 const PuzzleGame = () => {
   const { progress, updatePuzzleProgress } = useGame();
@@ -561,14 +362,17 @@ const PuzzleGame = () => {
                       ${revealPhase === 'assembling' && piece ? 'animate-piece-glow' : ''}
                       ${isRevealing ? 'cursor-default' : ''}
                     `}
-                    style={piece && imageUrl ? {
-                      backgroundImage: `url(${imageUrl})`,
-                      backgroundSize: '500%',
-                      backgroundPosition: `${pieceCol * 25}% ${pieceRow * 25}%`,
-                      clipPath: isMerging ? 'none' : getJigsawClipPath(piece.id),
-                      transition: 'clip-path 0.7s ease-out, transform 0.3s ease-out',
-                    } : undefined}
                   >
+                    {piece && (
+                      <PuzzlePieceSvg
+                        pieceId={piece.id}
+                        pieceCol={pieceCol}
+                        pieceRow={pieceRow}
+                        imageUrl={imageUrl}
+                        disableClip={isMerging}
+                        className="absolute inset-0 w-full h-full pointer-events-none"
+                      />
+                    )}
                     {isEmpty && !isRevealing && (
                       <span className="text-muted-foreground/30 text-xs">{boardPos + 1}</span>
                     )}
@@ -602,21 +406,19 @@ const PuzzleGame = () => {
                     <button
                       onClick={() => handleAvailablePieceClick(piece)}
                       title={`Peça ${piece.id + 1}`}
-                      className={`w-full aspect-square transition-all overflow-visible shadow-md
+                      className={`w-full aspect-square transition-all overflow-visible shadow-md relative
                         ${isSelected ? 'ring-3 ring-primary scale-115 z-10 shadow-xl' : 'hover:scale-110 hover:shadow-lg'}
                       `}
-                      style={imageUrl ? {
-                        backgroundImage: `url(${imageUrl})`,
-                        backgroundSize: '500%',
-                        backgroundPosition: `${pieceCol * 25}% ${pieceRow * 25}%`,
-                        clipPath: getJigsawClipPath(piece.id),
-                      } : {
-                        backgroundColor: 'hsl(var(--muted))',
-                        clipPath: getJigsawClipPath(piece.id),
-                      }}
                     >
+                      <PuzzlePieceSvg
+                        pieceId={piece.id}
+                        pieceCol={pieceCol}
+                        pieceRow={pieceRow}
+                        imageUrl={imageUrl}
+                        className="absolute inset-0 w-full h-full pointer-events-none"
+                      />
                       {!imageUrl && (
-                        <span className="text-muted-foreground text-sm font-bold">{piece.id + 1}</span>
+                        <span className="relative z-10 text-muted-foreground text-sm font-bold">{piece.id + 1}</span>
                       )}
                     </button>
                   </div>
