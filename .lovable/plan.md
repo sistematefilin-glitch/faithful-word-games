@@ -1,121 +1,132 @@
 
-
 ## Plano: Peças de Quebra-Cabeça com Formato Realista e Borda Marcada
 
 ### Problema Atual
 
-O código em `PuzzlePieceSvg.tsx` usa curvas Bézier simples que não reproduzem a forma clássica de "ombros + pescoço + cabeça" de peças de quebra-cabeça reais. O resultado são encaixes geométricos/estranhos em vez do visual tradicional.
+O codigo atual em `PuzzlePieceSvg.tsx` usa apenas 3 curvas Bezier por borda com proporcoes simples. Isso cria encaixes que parecem "bolhas" geometricas em vez do formato classico de pecas de quebra-cabeca reais.
 
-### Solução
+### Solucao
 
-Implementar um novo gerador de path SVG baseado no padrão "Shoulders & Head" com **6 curvas Bézier cúbicas por lado**:
-
-```text
-          ╭───╮         ← Cabeça (arredondada)
-         ╱     ╲        ← Pescoço (estreito)
-    ────╱       ╲────   ← Ombros (transição suave)
-```
-
-### Arquitetura do Path
-
-Cada "tab" (orelha para fora) ou "slot" (encaixe para dentro) será composto por 6 segmentos de curva Bézier cúbica:
-
-| Segmento | Descrição |
-|----------|-----------|
-| 1 | Ombro esquerdo - transição da borda para o pescoço |
-| 2 | Pescoço esquerdo - afunilamento |
-| 3 | Cabeça esquerda - início da curva arredondada |
-| 4 | Cabeça direita - fim da curva arredondada |
-| 5 | Pescoço direito - afunilamento |
-| 6 | Ombro direito - transição de volta à borda |
-
-### Pontos de Controle Bezier (baseado em referência real)
-
-Usando coordenadas normalizadas (0-100), os pontos de controle para uma "tab" serão:
+Reimplementar as funcoes de borda usando **6 curvas Bezier cubicas** por lado para criar a anatomia classica:
 
 ```text
-┌────────────────────────────────────────────────────────────┐
-│  Linha base: y = 0 (para borda superior)                   │
-│                                                            │
-│  Ombro esquerdo:  (0,0) → CP1(35,15) CP2(37,5) → (37,5)   │
-│  Pescoço esquerdo: → CP1(40,0) CP2(38,-5) → (38,-5)       │
-│  Cabeça esquerda:  → CP1(20,-20) CP2(50,-20) → (50,-20)   │
-│  Cabeça direita:   → CP1(80,-20) CP2(62,-5) → (62,-5)     │
-│  Pescoço direito:  → CP1(60,0) CP2(63,5) → (63,5)         │
-│  Ombro direito:    → CP1(65,15) CP2(100,0) → (100,0)      │
-└────────────────────────────────────────────────────────────┘
+          ╭───╮         <- Cabeca (arredondada, larga)
+         ╱     ╲        <- Pescoco (estreito)
+    ────╯       ╰────   <- Ombros (transicao suave)
 ```
 
-### Mudanças Técnicas
+### Mudancas Tecnicas
 
 **Arquivo: `src/components/games/PuzzlePieceSvg.tsx`**
 
-1. Substituir as funções `edgeTop`, `edgeRight`, `edgeBottom`, `edgeLeft` por uma nova implementação com 6 curvas Bézier cada
+1. **Novas proporcoes de geometria:**
+   - `tabWidth`: 40 (mais largo para cabeca mais pronunciada)
+   - `tabDepth`: 22 (mais profundo)
+   - `neckWidth`: 12 (pescoco mais estreito = contraste visual)
+   - `shoulderWidth`: 6 (ombros suaves)
 
-2. Usar pontos de controle que criam a forma clássica "ombros + pescoço + cabeça"
+2. **Estrutura de 6 curvas por borda:**
 
-3. Adicionar borda mais grossa e marcada (2-3px) com cor de destaque
+| Curva | Descricao |
+|-------|-----------|
+| 1 | Ombro esquerdo - transicao suave da borda |
+| 2 | Pescoco esquerdo - afunila para dentro |
+| 3 | Cabeca esquerda - sobe/desce para o topo |
+| 4 | Cabeca direita - curva de volta |
+| 5 | Pescoco direito - alarga novamente |
+| 6 | Ombro direito - volta a borda |
 
-4. Adicionar sombra sutil (drop-shadow via filtro SVG) para efeito de "recortado"
+3. **Borda marcada (estilo papelao):**
+   - Cor: `hsl(30, 25%, 30%)` (marrom escuro)
+   - Espessura: 2.5px
+   - `strokeLinejoin: round` e `strokeLinecap: round`
 
-### Detalhes da Implementação
+4. **Sombra para profundidade:**
+   - Filtro SVG `feDropShadow`
+   - dx: 1, dy: 2, stdDeviation: 1.5
+   - floodOpacity: 0.35
 
-**Nova função de geração de borda:**
+### Codigo das Novas Bordas
 
 ```typescript
-// Pontos de controle para forma "ombros + cabeça"
-const shouldersAndHead = {
-  // Ombro esquerdo: transição suave da borda
-  shoulder1: { cx1: 0, cy1: 0, cx2: 35, cy2: 15, ex: 37, ey: 5 },
-  // Pescoço esquerdo: afunila
-  neck1: { cx1: 37, cy1: 5, cx2: 40, cy2: 0, ex: 38, ey: -5 },
-  // Cabeça esquerda: curva para o topo
-  head1: { cx1: 38, cy1: -5, cx2: 20, cy2: -20, ex: 50, ey: -20 },
-  // Cabeça direita: curva descendo
-  head2: { cx1: 50, cy1: -20, cx2: 80, cy2: -20, ex: 62, ey: -5 },
-  // Pescoço direito: alarga
-  neck2: { cx1: 62, cy1: -5, cx2: 60, cy2: 0, ex: 63, ey: 5 },
-  // Ombro direito: volta à borda
-  shoulder2: { cx1: 63, cy1: 5, cx2: 65, cy2: 15, ex: 100, ey: 0 },
-};
+// Exemplo para edgeTop com 6 curvas
+function edgeTop(sign: number) {
+  if (sign === 0) return `L 100 0`;
+
+  const tabW = 40;    // largura total da area do tab
+  const tabD = 22;    // profundidade do tab
+  const neckW = 12;   // largura do pescoco
+  const headW = 24;   // largura da cabeca
+  const cx = 50;      // centro
+  
+  // Pontos chave
+  const shoulderL = cx - tabW / 2;      // 30
+  const neckL = cx - neckW / 2;         // 44
+  const neckR = cx + neckW / 2;         // 56
+  const shoulderR = cx + tabW / 2;      // 70
+  
+  const d = sign * tabD;
+
+  return [
+    // Linha ate ombro esquerdo
+    `L ${shoulderL} 0`,
+    // Ombro esquerdo -> pescoco esquerdo
+    `C ${shoulderL + 4} 0, ${neckL - 2} ${d * 0.3}, ${neckL} ${d * 0.45}`,
+    // Pescoco esquerdo -> cabeca esquerda
+    `C ${neckL + 2} ${d * 0.6}, ${cx - headW/2} ${d * 0.95}, ${cx - headW/2} ${d}`,
+    // Cabeca esquerda -> cabeca direita (topo arredondado)
+    `C ${cx - headW/4} ${d * 1.1}, ${cx + headW/4} ${d * 1.1}, ${cx + headW/2} ${d}`,
+    // Cabeca direita -> pescoco direito
+    `C ${cx + headW/2} ${d * 0.95}, ${neckR - 2} ${d * 0.6}, ${neckR} ${d * 0.45}`,
+    // Pescoco direito -> ombro direito
+    `C ${neckR + 2} ${d * 0.3}, ${shoulderR - 4} 0, ${shoulderR} 0`,
+    // Linha ate o fim
+    `L 100 0`,
+  ].join(" ");
+}
 ```
 
-**Borda marcada (visual de papelão):**
+### Estrutura SVG Atualizada
 
-```typescript
-// Contorno mais grosso e escuro
-<path
-  d={d}
-  fill="none"
-  stroke="hsl(30, 20%, 25%)"  // Marrom escuro
-  strokeWidth={2.5}
-  strokeLinejoin="round"
-  strokeLinecap="round"
-/>
-```
+```tsx
+<svg viewBox="-5 -5 110 110"> {/* viewBox expandido para sombra */}
+  <defs>
+    <filter id="piece-shadow">
+      <feDropShadow dx="1" dy="2" stdDeviation="1.5" flood-opacity="0.35"/>
+    </filter>
+    <clipPath id={clipId}>
+      <path d={d} />
+    </clipPath>
+  </defs>
 
-**Sombra para profundidade:**
+  {/* Imagem recortada */}
+  <image ... clipPath={`url(#${clipId})`} />
 
-```typescript
-<defs>
-  <filter id="piece-shadow">
-    <feDropShadow dx="1" dy="1" stdDeviation="1" floodOpacity="0.4"/>
-  </filter>
-</defs>
+  {/* Borda marcada com sombra */}
+  <path
+    d={d}
+    fill="none"
+    stroke="hsl(30, 25%, 30%)"
+    strokeWidth={2.5}
+    strokeLinejoin="round"
+    strokeLinecap="round"
+    filter="url(#piece-shadow)"
+  />
+</svg>
 ```
 
 ### Resultado Visual Esperado
 
 | Antes | Depois |
 |-------|--------|
-| Encaixes geométricos/angulares | Forma clássica com curvas suaves |
-| Borda fina e discreta | Borda grossa marrom (papelão) |
+| 3 curvas simples (bolhas) | 6 curvas anatomicas |
+| Pescoco largo | Pescoco estreito (contraste) |
+| Cabeca pequena | Cabeca larga e arredondada |
+| Borda fina cinza | Borda grossa marrom |
 | Sem profundidade | Sombra sutil 3D |
-| Transições abruptas | Ombros + pescoço + cabeça fluidos |
 
-### Arquivos Modificados
+### Arquivo Modificado
 
-| Arquivo | Alteração |
+| Arquivo | Alteracao |
 |---------|-----------|
-| `src/components/games/PuzzlePieceSvg.tsx` | Reescrever funções de borda com 6 curvas Bézier cada + borda marcada + sombra |
-
+| `src/components/games/PuzzlePieceSvg.tsx` | Reescrever `edgeTop`, `edgeRight`, `edgeBottom`, `edgeLeft` com 6 curvas cada + borda marcada + sombra SVG |
