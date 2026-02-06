@@ -13,11 +13,9 @@ type Props = {
 };
 
 // ============================================================================
-// GEOMETRY - Classic jigsaw with PRONOUNCED head and NARROW neck
+// GEOMETRY - Real jigsaw tab using only Cubic Bézier (C) curves
 // ============================================================================
-const TAB_DEPTH = 20;      // How far the tab protrudes
-const NECK_WIDTH = 8;      // Very narrow neck for classic look
-const HEAD_RADIUS = 14;    // Large rounded head
+const TAB_SIZE = 20;
 const CENTER = 50;
 
 // ============================================================================
@@ -47,134 +45,144 @@ function getEdgeSign(row: number, col: number, gridSize: number, edge: Edge): nu
 }
 
 // ============================================================================
-// CLASSIC JIGSAW TAB/SLOT - Pronounced circular head with narrow neck
-// Uses quadratic and cubic bezier for smooth organic curves
+// REALISTIC TAB using 7 Cubic Bézier curves
+// Horizontal tab points (sign=1 means tab protrudes in -Y direction for top)
 // ============================================================================
 
 /**
- * Creates a classic jigsaw tab/slot shape with:
- * - Gradual shoulder transition
- * - Very narrow neck (waist)
- * - Large circular head
+ * Returns an array of [x, y] control points for a horizontal tab.
+ * sign: 1 = tab goes outward (negative Y for top edge), -1 = slot (inward)
+ * The path starts at (35, 0) and ends at (65, 0) relative to edge baseline.
  */
-function createTabPath(
-  sign: number,
-  isHorizontal: boolean,
-  isReversed: boolean
-): string {
-  if (sign === 0) {
-    return isHorizontal 
-      ? (isReversed ? `L 0 100` : `L 100 0`)
-      : (isReversed ? `L 0 0` : `L 100 100`);
-  }
+function horizontalTabCurves(sign: number): string {
+  if (sign === 0) return "";
 
-  const d = sign * TAB_DEPTH;
-  const neckHalf = NECK_WIDTH / 2;
-  const headR = HEAD_RADIUS;
+  const s = sign;
+  const d = TAB_SIZE;
 
-  // Key points along the edge (0 to 100)
-  const shoulderStart = 32;   // Where shoulder curve begins
-  const neckPoint = 50;       // Center/narrowest point
-  const shoulderEnd = 68;     // Where shoulder curve ends
+  // All Y values are multiplied by -sign*d/20 to scale and flip direction
+  const sy = (v: number) => s * v * d / 20;
 
-  if (isHorizontal) {
-    // TOP edge: (0,0) → (100,0), or BOTTOM reversed: (100,100) → (0,100)
-    const y = isReversed ? 100 : 0;
-    const dir = isReversed ? 1 : 1;  // Tab direction relative to edge
-    
-    const tabY = y + d * dir;
-    const headTopY = y + (d + headR * 0.4) * dir;
-
-    if (isReversed) {
-      // Bottom edge goes right to left
-      return [
-        `L ${shoulderEnd} ${y}`,
-        // Right shoulder curve down/up to neck
-        `Q ${shoulderEnd - 2} ${y + d * 0.25 * dir}, ${neckPoint + neckHalf} ${y + d * 0.5 * dir}`,
-        // Right side of neck to head
-        `Q ${neckPoint + neckHalf + 2} ${tabY - headR * 0.2 * dir}, ${neckPoint + headR} ${tabY}`,
-        // Head arc (circular top)
-        `A ${headR} ${headR * 0.9} 0 1 ${dir > 0 ? 1 : 0} ${neckPoint - headR} ${tabY}`,
-        // Left side of head back to neck
-        `Q ${neckPoint - neckHalf - 2} ${tabY - headR * 0.2 * dir}, ${neckPoint - neckHalf} ${y + d * 0.5 * dir}`,
-        // Left neck back to shoulder
-        `Q ${shoulderStart + 2} ${y + d * 0.25 * dir}, ${shoulderStart} ${y}`,
-        `L 0 ${y}`,
-      ].join(" ");
-    } else {
-      // Top edge goes left to right
-      return [
-        `L ${shoulderStart} ${y}`,
-        // Left shoulder curve
-        `Q ${shoulderStart + 2} ${y + d * 0.25}, ${neckPoint - neckHalf} ${y + d * 0.5}`,
-        // Left neck to head
-        `Q ${neckPoint - neckHalf - 2} ${tabY - headR * 0.2 * Math.sign(d)}, ${neckPoint - headR} ${tabY}`,
-        // Head arc
-        `A ${headR} ${headR * 0.9} 0 1 ${d < 0 ? 1 : 0} ${neckPoint + headR} ${tabY}`,
-        // Right head back to neck
-        `Q ${neckPoint + neckHalf + 2} ${tabY - headR * 0.2 * Math.sign(d)}, ${neckPoint + neckHalf} ${y + d * 0.5}`,
-        // Right neck to shoulder
-        `Q ${shoulderEnd - 2} ${y + d * 0.25}, ${shoulderEnd} ${y}`,
-        `L 100 ${y}`,
-      ].join(" ");
-    }
-  } else {
-    // RIGHT edge: (100,0) → (100,100), or LEFT reversed: (0,100) → (0,0)
-    const x = isReversed ? 0 : 100;
-    const dir = isReversed ? -1 : 1;
-    
-    const tabX = x + d * dir;
-
-    if (isReversed) {
-      // Left edge goes bottom to top
-      return [
-        `L ${x} ${shoulderEnd}`,
-        // Bottom shoulder
-        `Q ${x + d * 0.25 * dir} ${shoulderEnd - 2}, ${x + d * 0.5 * dir} ${neckPoint + neckHalf}`,
-        // Bottom neck to head
-        `Q ${tabX - headR * 0.2 * dir} ${neckPoint + neckHalf + 2}, ${tabX} ${neckPoint + headR}`,
-        // Head arc
-        `A ${headR * 0.9} ${headR} 0 1 ${d > 0 ? 0 : 1} ${tabX} ${neckPoint - headR}`,
-        // Top head to neck
-        `Q ${tabX - headR * 0.2 * dir} ${neckPoint - neckHalf - 2}, ${x + d * 0.5 * dir} ${neckPoint - neckHalf}`,
-        // Top neck to shoulder
-        `Q ${x + d * 0.25 * dir} ${shoulderStart + 2}, ${x} ${shoulderStart}`,
-        `L ${x} 0`,
-      ].join(" ");
-    } else {
-      // Right edge goes top to bottom
-      return [
-        `L ${x} ${shoulderStart}`,
-        // Top shoulder
-        `Q ${x + d * 0.25} ${shoulderStart + 2}, ${x + d * 0.5} ${neckPoint - neckHalf}`,
-        // Top neck to head
-        `Q ${tabX - headR * 0.2 * Math.sign(d)} ${neckPoint - neckHalf - 2}, ${tabX} ${neckPoint - headR}`,
-        // Head arc
-        `A ${headR * 0.9} ${headR} 0 1 ${d > 0 ? 1 : 0} ${tabX} ${neckPoint + headR}`,
-        // Bottom head to neck
-        `Q ${tabX - headR * 0.2 * Math.sign(d)} ${neckPoint + neckHalf + 2}, ${x + d * 0.5} ${neckPoint + neckHalf}`,
-        // Bottom neck to shoulder
-        `Q ${x + d * 0.25} ${shoulderEnd - 2}, ${x} ${shoulderEnd}`,
-        `L ${x} 100`,
-      ].join(" ");
-    }
-  }
+  return [
+    // C1: Shoulder left - smooth transition from flat edge
+    `C 37,${sy(0)} 38,${sy(3)} 40,${sy(8)}`,
+    // C2: Neck left - tapers to narrowest point
+    `C 41,${sy(11)} 42,${sy(15)} 43,${sy(16)}`,
+    // C3: Head left - expands outward for mushroom shape
+    `C 37,${sy(18)} 34,${sy(22)} 38,${sy(25)}`,
+    // C4: Head top - wide rounded arc across the top
+    `C 42,${sy(28)} 58,${sy(28)} 62,${sy(25)}`,
+    // C5: Head right - contracts back
+    `C 66,${sy(22)} 63,${sy(18)} 57,${sy(16)}`,
+    // C6: Neck right - tapers back
+    `C 58,${sy(15)} 59,${sy(11)} 60,${sy(8)}`,
+    // C7: Shoulder right - smooth return to flat edge
+    `C 62,${sy(3)} 63,${sy(0)} 65,0`,
+  ].join(" ");
 }
 
+/**
+ * Returns cubic Bézier curves for a vertical tab.
+ * This is the horizontal tab rotated 90°: X↔Y swap.
+ */
+function verticalTabCurves(sign: number): string {
+  if (sign === 0) return "";
+
+  const s = sign;
+  const d = TAB_SIZE;
+  const sx = (v: number) => s * v * d / 20;
+
+  return [
+    // C1: Shoulder top
+    `C ${sx(0)},37 ${sx(3)},38 ${sx(8)},40`,
+    // C2: Neck top
+    `C ${sx(11)},41 ${sx(15)},42 ${sx(16)},43`,
+    // C3: Head top - expands
+    `C ${sx(18)},37 ${sx(22)},34 ${sx(25)},38`,
+    // C4: Head arc
+    `C ${sx(28)},42 ${sx(28)},58 ${sx(25)},62`,
+    // C5: Head bottom - contracts
+    `C ${sx(22)},66 ${sx(18)},63 ${sx(16)},57`,
+    // C6: Neck bottom
+    `C ${sx(15)},58 ${sx(11)},59 ${sx(8)},60`,
+    // C7: Shoulder bottom
+    `C ${sx(3)},62 ${sx(0)},63 0,65`,
+  ].join(" ");
+}
+
+// ============================================================================
+// EDGE PATH BUILDERS
+// ============================================================================
+
 function edgeTop(sign: number): string {
-  return createTabPath(sign, true, false);
+  if (sign === 0) return "L 100,0";
+  // Top edge: left to right, tab protrudes upward (negative Y)
+  return `L 35,0 ${horizontalTabCurves(-sign)} L 100,0`;
 }
 
 function edgeRight(sign: number): string {
-  return createTabPath(sign, false, false);
+  if (sign === 0) return "L 100,100";
+  // Right edge: top to bottom, tab protrudes rightward (positive X)
+  return `L 100,35 ${verticalTabCurves(sign)} L 100,100`;
 }
 
 function edgeBottom(sign: number): string {
-  return createTabPath(sign, true, true);
+  if (sign === 0) return "L 0,100";
+  // Bottom edge: right to left, tab protrudes downward (positive Y)
+  // We need to reverse the horizontal tab and offset to Y=100
+  return `L 65,100 ${horizontalTabReversed(sign)} L 0,100`;
 }
 
 function edgeLeft(sign: number): string {
-  return createTabPath(sign, false, true);
+  if (sign === 0) return "L 0,0";
+  // Left edge: bottom to top, tab protrudes leftward (negative X)
+  return `L 0,65 ${verticalTabReversed(-sign)} L 0,0`;
+}
+
+/**
+ * Bottom edge goes right-to-left, so we mirror the horizontal tab.
+ * Points are reflected: x → (100 - x), and traverse in reverse order.
+ * Y baseline is 100.
+ */
+function horizontalTabReversed(sign: number): string {
+  if (sign === 0) return "";
+
+  const s = sign;
+  const d = TAB_SIZE;
+  const sy = (v: number) => 100 + s * v * d / 20;
+
+  return [
+    `C ${63},${sy(0)} ${62},${sy(3)} ${60},${sy(8)}`,
+    `C ${59},${sy(11)} ${58},${sy(15)} ${57},${sy(16)}`,
+    `C ${63},${sy(18)} ${66},${sy(22)} ${62},${sy(25)}`,
+    `C ${58},${sy(28)} ${42},${sy(28)} ${38},${sy(25)}`,
+    `C ${34},${sy(22)} ${37},${sy(18)} ${43},${sy(16)}`,
+    `C ${42},${sy(15)} ${41},${sy(11)} ${40},${sy(8)}`,
+    `C ${38},${sy(3)} ${37},${sy(0)} ${35},100`,
+  ].join(" ");
+}
+
+/**
+ * Left edge goes bottom-to-top, so we mirror the vertical tab.
+ * Points are reflected: y → (100 - y), traverse in reverse order.
+ * X baseline is 0.
+ */
+function verticalTabReversed(sign: number): string {
+  if (sign === 0) return "";
+
+  const s = sign;
+  const d = TAB_SIZE;
+  const sx = (v: number) => s * v * d / 20;
+
+  return [
+    `C ${sx(0)},63 ${sx(3)},62 ${sx(8)},60`,
+    `C ${sx(11)},59 ${sx(15)},58 ${sx(16)},57`,
+    `C ${sx(18)},63 ${sx(22)},66 ${sx(25)},62`,
+    `C ${sx(28)},58 ${sx(28)},42 ${sx(25)},38`,
+    `C ${sx(22)},34 ${sx(18)},37 ${sx(16)},43`,
+    `C ${sx(15)},42 ${sx(11)},41 ${sx(8)},40`,
+    `C ${sx(3)},38 ${sx(0)},37 0,35`,
+  ].join(" ");
 }
 
 // ============================================================================
@@ -190,7 +198,7 @@ function getJigsawPathD(pieceId: number, gridSize: number): string {
   const left = -getEdgeSign(row, col, gridSize, "left");
 
   return [
-    `M 0 0`,
+    `M 0,0`,
     edgeTop(top),
     edgeRight(right),
     edgeBottom(bottom),
@@ -230,12 +238,11 @@ export const PuzzlePieceSvg = memo(function PuzzlePieceSvg({
       preserveAspectRatio="none"
     >
       <defs>
-        {/* Strong shadow for cardboard depth */}
         <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
-          <feDropShadow 
-            dx="2" 
-            dy="3" 
-            stdDeviation="2" 
+          <feDropShadow
+            dx="2"
+            dy="3"
+            stdDeviation="2"
             floodColor="#2a1810"
             floodOpacity="0.5"
           />
@@ -248,7 +255,6 @@ export const PuzzlePieceSvg = memo(function PuzzlePieceSvg({
         )}
       </defs>
 
-      {/* Image or placeholder */}
       {imageUrl ? (
         <image
           href={imageUrl}
@@ -270,13 +276,12 @@ export const PuzzlePieceSvg = memo(function PuzzlePieceSvg({
         />
       )}
 
-      {/* Thick cardboard-style border with shadow */}
       {!disableClip && (
         <path
           d={d}
           fill="none"
           stroke="#3d2817"
-          strokeWidth={3}
+          strokeWidth={2.5}
           strokeLinejoin="round"
           strokeLinecap="round"
           filter={`url(#${filterId})`}
