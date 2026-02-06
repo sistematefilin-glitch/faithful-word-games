@@ -13,12 +13,6 @@ type Props = {
 };
 
 // ============================================================================
-// GEOMETRY - Real jigsaw tab using only Cubic Bézier (C) curves
-// ============================================================================
-const TAB_SIZE = 20;
-const CENTER = 50;
-
-// ============================================================================
 // EDGE SIGN CALCULATION
 // ============================================================================
 function getEdgeSign(row: number, col: number, gridSize: number, edge: Edge): number {
@@ -45,144 +39,94 @@ function getEdgeSign(row: number, col: number, gridSize: number, edge: Edge): nu
 }
 
 // ============================================================================
-// REALISTIC TAB using 7 Cubic Bézier curves
-// Horizontal tab points (sign=1 means tab protrudes in -Y direction for top)
+// REALISTIC TAB - 7 Cubic Bézier curves per edge
+// Template points define a tab centered at position 50 along a 0-100 edge.
+// "along" = the axis parallel to the edge, "out" = perpendicular (tab direction)
 // ============================================================================
 
-/**
- * Returns an array of [x, y] control points for a horizontal tab.
- * sign: 1 = tab goes outward (negative Y for top edge), -1 = slot (inward)
- * The path starts at (35, 0) and ends at (65, 0) relative to edge baseline.
- */
-function horizontalTabCurves(sign: number): string {
-  if (sign === 0) return "";
-
-  const s = sign;
-  const d = TAB_SIZE;
-
-  // All Y values are multiplied by -sign*d/20 to scale and flip direction
-  const sy = (v: number) => s * v * d / 20;
-
-  return [
-    // C1: Shoulder left - smooth transition from flat edge
-    `C 37,${sy(0)} 38,${sy(3)} 40,${sy(8)}`,
-    // C2: Neck left - tapers to narrowest point
-    `C 41,${sy(11)} 42,${sy(15)} 43,${sy(16)}`,
-    // C3: Head left - expands outward for mushroom shape
-    `C 37,${sy(18)} 34,${sy(22)} 38,${sy(25)}`,
-    // C4: Head top - wide rounded arc across the top
-    `C 42,${sy(28)} 58,${sy(28)} 62,${sy(25)}`,
-    // C5: Head right - contracts back
-    `C 66,${sy(22)} 63,${sy(18)} 57,${sy(16)}`,
-    // C6: Neck right - tapers back
-    `C 58,${sy(15)} 59,${sy(11)} 60,${sy(8)}`,
-    // C7: Shoulder right - smooth return to flat edge
-    `C 62,${sy(3)} 63,${sy(0)} 65,0`,
-  ].join(" ");
-}
+// Template: along values (0-100 axis), out values (depth)
+// Tab starts at along=35, ends at along=65
+const TAB_POINTS = {
+  // [along, out] for each key point, plus control points
+  // C1: flat → shoulder
+  c1: { cp1: [37, 0], cp2: [38, 3], end: [40, 8] },
+  // C2: shoulder → neck
+  c2: { cp1: [41, 11], cp2: [42, 15], end: [43, 16] },
+  // C3: neck → head (expands wider than neck)
+  c3: { cp1: [37, 18], cp2: [34, 22], end: [38, 25] },
+  // C4: head arc (wide rounded top)
+  c4: { cp1: [42, 28], cp2: [58, 28], end: [62, 25] },
+  // C5: head → neck (contracts)
+  c5: { cp1: [66, 22], cp2: [63, 18], end: [57, 16] },
+  // C6: neck → shoulder
+  c6: { cp1: [58, 15], cp2: [59, 11], end: [60, 8] },
+  // C7: shoulder → flat
+  c7: { cp1: [62, 3], cp2: [63, 0], end: [65, 0] },
+};
 
 /**
- * Returns cubic Bézier curves for a vertical tab.
- * This is the horizontal tab rotated 90°: X↔Y swap.
+ * Generates the 7 cubic Bézier curves for a tab on any edge.
+ * 
+ * @param sign - 1 for tab (outward), -1 for slot (inward), 0 for flat
+ * @param edge - which edge of the piece
  */
-function verticalTabCurves(sign: number): string {
+function createTabCurves(sign: number, edge: Edge): string {
   if (sign === 0) return "";
 
-  const s = sign;
-  const d = TAB_SIZE;
-  const sx = (v: number) => s * v * d / 20;
+  const curves = [
+    TAB_POINTS.c1, TAB_POINTS.c2, TAB_POINTS.c3, TAB_POINTS.c4,
+    TAB_POINTS.c5, TAB_POINTS.c6, TAB_POINTS.c7,
+  ];
 
-  return [
-    // C1: Shoulder top
-    `C ${sx(0)},37 ${sx(3)},38 ${sx(8)},40`,
-    // C2: Neck top
-    `C ${sx(11)},41 ${sx(15)},42 ${sx(16)},43`,
-    // C3: Head top - expands
-    `C ${sx(18)},37 ${sx(22)},34 ${sx(25)},38`,
-    // C4: Head arc
-    `C ${sx(28)},42 ${sx(28)},58 ${sx(25)},62`,
-    // C5: Head bottom - contracts
-    `C ${sx(22)},66 ${sx(18)},63 ${sx(16)},57`,
-    // C6: Neck bottom
-    `C ${sx(15)},58 ${sx(11)},59 ${sx(8)},60`,
-    // C7: Shoulder bottom
-    `C ${sx(3)},62 ${sx(0)},63 0,65`,
-  ].join(" ");
+  // Transform template [along, out] to actual [x, y] based on edge
+  const transform = (along: number, out: number): [number, number] => {
+    const depth = sign * out;
+    switch (edge) {
+      case "top":
+        // along = X (left to right), out = -Y (upward)
+        return [along, -depth];
+      case "bottom":
+        // along = X reversed (right to left), out = +Y (downward)
+        return [100 - along, 100 + depth];
+      case "right":
+        // along = Y (top to bottom), out = +X (rightward)
+        return [100 + depth, along];
+      case "left":
+        // along = Y reversed (bottom to top), out = -X (leftward)
+        return [0 - depth, 100 - along];
+    }
+  };
+
+  return curves.map(c => {
+    const [x1, y1] = transform(c.cp1[0], c.cp1[1]);
+    const [x2, y2] = transform(c.cp2[0], c.cp2[1]);
+    const [ex, ey] = transform(c.end[0], c.end[1]);
+    return `C ${x1},${y1} ${x2},${y2} ${ex},${ey}`;
+  }).join(" ");
 }
 
 // ============================================================================
-// EDGE PATH BUILDERS
+// EDGE PATH BUILDERS  
 // ============================================================================
 
 function edgeTop(sign: number): string {
   if (sign === 0) return "L 100,0";
-  // Top edge: left to right, tab protrudes upward (negative Y)
-  return `L 35,0 ${horizontalTabCurves(-sign)} L 100,0`;
+  return `L 35,0 ${createTabCurves(sign, "top")} L 100,0`;
 }
 
 function edgeRight(sign: number): string {
   if (sign === 0) return "L 100,100";
-  // Right edge: top to bottom, tab protrudes rightward (positive X)
-  return `L 100,35 ${verticalTabCurves(sign)} L 100,100`;
+  return `L 100,35 ${createTabCurves(sign, "right")} L 100,100`;
 }
 
 function edgeBottom(sign: number): string {
   if (sign === 0) return "L 0,100";
-  // Bottom edge: right to left, tab protrudes downward (positive Y)
-  // We need to reverse the horizontal tab and offset to Y=100
-  return `L 65,100 ${horizontalTabReversed(sign)} L 0,100`;
+  return `L 65,100 ${createTabCurves(sign, "bottom")} L 0,100`;
 }
 
 function edgeLeft(sign: number): string {
   if (sign === 0) return "L 0,0";
-  // Left edge: bottom to top, tab protrudes leftward (negative X)
-  return `L 0,65 ${verticalTabReversed(-sign)} L 0,0`;
-}
-
-/**
- * Bottom edge goes right-to-left, so we mirror the horizontal tab.
- * Points are reflected: x → (100 - x), and traverse in reverse order.
- * Y baseline is 100.
- */
-function horizontalTabReversed(sign: number): string {
-  if (sign === 0) return "";
-
-  const s = sign;
-  const d = TAB_SIZE;
-  const sy = (v: number) => 100 + s * v * d / 20;
-
-  return [
-    `C ${63},${sy(0)} ${62},${sy(3)} ${60},${sy(8)}`,
-    `C ${59},${sy(11)} ${58},${sy(15)} ${57},${sy(16)}`,
-    `C ${63},${sy(18)} ${66},${sy(22)} ${62},${sy(25)}`,
-    `C ${58},${sy(28)} ${42},${sy(28)} ${38},${sy(25)}`,
-    `C ${34},${sy(22)} ${37},${sy(18)} ${43},${sy(16)}`,
-    `C ${42},${sy(15)} ${41},${sy(11)} ${40},${sy(8)}`,
-    `C ${38},${sy(3)} ${37},${sy(0)} ${35},100`,
-  ].join(" ");
-}
-
-/**
- * Left edge goes bottom-to-top, so we mirror the vertical tab.
- * Points are reflected: y → (100 - y), traverse in reverse order.
- * X baseline is 0.
- */
-function verticalTabReversed(sign: number): string {
-  if (sign === 0) return "";
-
-  const s = sign;
-  const d = TAB_SIZE;
-  const sx = (v: number) => s * v * d / 20;
-
-  return [
-    `C ${sx(0)},63 ${sx(3)},62 ${sx(8)},60`,
-    `C ${sx(11)},59 ${sx(15)},58 ${sx(16)},57`,
-    `C ${sx(18)},63 ${sx(22)},66 ${sx(25)},62`,
-    `C ${sx(28)},58 ${sx(28)},42 ${sx(25)},38`,
-    `C ${sx(22)},34 ${sx(18)},37 ${sx(16)},43`,
-    `C ${sx(15)},42 ${sx(11)},41 ${sx(8)},40`,
-    `C ${sx(3)},38 ${sx(0)},37 0,35`,
-  ].join(" ");
+  return `L 0,65 ${createTabCurves(sign, "left")} L 0,0`;
 }
 
 // ============================================================================
