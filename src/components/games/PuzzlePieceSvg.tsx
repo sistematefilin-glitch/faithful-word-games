@@ -51,15 +51,15 @@ const TAB_POINTS = {
   // C1: flat → shoulder
   c1: { cp1: [37, 0], cp2: [38, 3], end: [40, 8] },
   // C2: shoulder → neck
-  c2: { cp1: [41, 11], cp2: [42, 15], end: [43, 16] },
-  // C3: neck → head (expands wider than neck)
-  c3: { cp1: [37, 18], cp2: [34, 22], end: [38, 25] },
-  // C4: head arc (wide rounded top)
-  c4: { cp1: [42, 28], cp2: [58, 28], end: [62, 25] },
-  // C5: head → neck (contracts)
-  c5: { cp1: [66, 22], cp2: [63, 18], end: [57, 16] },
+  c2: { cp1: [41, 11], cp2: [42, 14], end: [43, 16] },
+  // C3: neck → head (expands wider than neck) - rounder
+  c3: { cp1: [36, 19], cp2: [32, 24], end: [36, 28] },
+  // C4: head arc (wide, very rounded top)
+  c4: { cp1: [40, 32], cp2: [60, 32], end: [64, 28] },
+  // C5: head → neck (contracts) - rounder
+  c5: { cp1: [68, 24], cp2: [64, 19], end: [57, 16] },
   // C6: neck → shoulder
-  c6: { cp1: [58, 15], cp2: [59, 11], end: [60, 8] },
+  c6: { cp1: [58, 14], cp2: [59, 11], end: [60, 8] },
   // C7: shoulder → flat
   c7: { cp1: [62, 3], cp2: [63, 0], end: [65, 0] },
 };
