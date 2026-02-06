@@ -136,10 +136,10 @@ function getJigsawPathD(pieceId: number, gridSize: number): string {
   const row = Math.floor(pieceId / gridSize);
   const col = pieceId % gridSize;
 
-  const top = -getEdgeSign(row, col, gridSize, "top");
+  const top = getEdgeSign(row, col, gridSize, "top");
   const right = getEdgeSign(row, col, gridSize, "right");
   const bottom = getEdgeSign(row, col, gridSize, "bottom");
-  const left = -getEdgeSign(row, col, gridSize, "left");
+  const left = getEdgeSign(row, col, gridSize, "left");
 
   return [
     `M 0,0`,
