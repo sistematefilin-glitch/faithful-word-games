@@ -2,6 +2,12 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { PUZZLE_IMAGES } from '@/data/puzzleData';
 
+// Picsum Photos API - free, no API key needed
+// Uses seeded random images so same puzzleId always gets same image
+function getPicsumFallbackUrl(puzzleId: number): string {
+  return `https://picsum.photos/seed/bible-puzzle-${puzzleId}/600/600`;
+}
+
 // Local session cache
 const imageCache: Record<number, string> = {};
 
@@ -37,17 +43,24 @@ async function processQueue() {
       });
 
       if (error) {
-        console.error('Error generating image:', error);
-        item.resolve(null);
+        console.error('Error generating image, using Picsum fallback:', error);
+        const fallback = getPicsumFallbackUrl(item.puzzleId);
+        imageCache[item.puzzleId] = fallback;
+        item.resolve(fallback);
       } else if (data?.imageUrl) {
         imageCache[item.puzzleId] = data.imageUrl;
         item.resolve(data.imageUrl);
       } else {
-        item.resolve(null);
+        console.warn('No image from AI, using Picsum fallback');
+        const fallback = getPicsumFallbackUrl(item.puzzleId);
+        imageCache[item.puzzleId] = fallback;
+        item.resolve(fallback);
       }
     } catch (err) {
       console.error('Error in queue processing:', err);
-      item.resolve(null);
+      const fallback = getPicsumFallbackUrl(item.puzzleId);
+      imageCache[item.puzzleId] = fallback;
+      item.resolve(fallback);
     }
   }
   
