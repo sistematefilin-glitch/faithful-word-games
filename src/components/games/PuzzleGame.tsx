@@ -5,31 +5,19 @@ import { useGame } from '@/contexts/GameContext';
 import { useSound } from '@/hooks/useSound';
 import { usePuzzleImage, fetchExistingPuzzleImages } from '@/hooks/usePuzzleImage';
 import { PUZZLE_IMAGES } from '@/data/puzzleData';
-import { ArrowLeft, Eye, RotateCcw, Star, Loader2, Grid3X3, HelpCircle } from 'lucide-react';
-import { PuzzlePieceSvg } from '@/components/games/PuzzlePieceSvg';
-
-type RevealPhase = 'none' | 'assembling' | 'merging' | 'complete';
-
-interface PuzzlePiece {
-  id: number;
-  correctPos: number;
-  currentPos: number; // -1 means in the pieces area, >= 0 means on the board
-}
+import { ArrowLeft, Star, Loader2, RotateCcw, HelpCircle } from 'lucide-react';
+import * as headbreaker from 'headbreaker';
 
 const PuzzleGame = () => {
   const { progress, updatePuzzleProgress } = useGame();
   const { playSelect, playMatch, playSuccess } = useSound();
   const [selectedPuzzle, setSelectedPuzzle] = useState<number | null>(null);
-  const [pieces, setPieces] = useState<PuzzlePiece[]>([]);
-  const [selectedPiece, setSelectedPiece] = useState<number | null>(null);
   const [timer, setTimer] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
-  const [showBorders, setShowBorders] = useState(true);
   const [filter, setFilter] = useState<'all' | 'AT' | 'NT'>('all');
   const [existingImages, setExistingImages] = useState<Record<number, string>>({});
-  const [revealPhase, setRevealPhase] = useState<RevealPhase>('none');
-  const revealTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
+  const canvasRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const puzzleData = selectedPuzzle ? PUZZLE_IMAGES.find(p => p.id === selectedPuzzle) : null;
   const { imageUrl, isLoading: isImageLoading } = usePuzzleImage(selectedPuzzle);
@@ -39,6 +27,7 @@ const PuzzleGame = () => {
     fetchExistingPuzzleImages().then(setExistingImages);
   }, []);
 
+  // Timer
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (selectedPuzzle && !isComplete && !isImageLoading && imageUrl) {
@@ -47,155 +36,100 @@ const PuzzleGame = () => {
     return () => clearInterval(interval);
   }, [selectedPuzzle, isComplete, isImageLoading, imageUrl]);
 
-  const startPuzzle = (id: number) => {
-    // Clear any existing reveal timeouts
-    revealTimeoutsRef.current.forEach(t => clearTimeout(t));
-    revealTimeoutsRef.current = [];
+  // Initialize headbreaker when image is ready
+  useEffect(() => {
+    if (!selectedPuzzle || !imageUrl || isImageLoading || !containerRef.current) return;
+
+    // Clear previous canvas
+    const container = containerRef.current;
+    container.innerHTML = '';
     
+    // Create a unique ID
+    const canvasId = `puzzle-canvas-${selectedPuzzle}`;
+    const div = document.createElement('div');
+    div.id = canvasId;
+    container.appendChild(div);
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = imageUrl;
+    
+    img.onload = () => {
+      try {
+        // Calculate size to fit the container
+        const containerWidth = container.clientWidth || 400;
+        const size = Math.min(containerWidth, 500);
+        
+        const canvas = new headbreaker.Canvas(canvasId, {
+          width: size,
+          height: size,
+          pieceSize: Math.floor(size / 6),
+          proximity: 15,
+          borderFill: 8,
+          strokeWidth: 1.5,
+          lineSoftness: 0.18,
+          image: img,
+          fixed: true,
+          painter: new headbreaker.painters.Konva(),
+        });
+
+        canvas.autogenerate({
+          horizontalPiecesCount: 5,
+          verticalPiecesCount: 5,
+        });
+
+        canvas.adjustImagesToPuzzleHeight();
+        canvas.shuffle(0.8);
+        canvas.draw();
+
+        // Attach validation
+        canvas.attachSolvedValidator();
+        canvas.onValid(() => {
+          playSuccess();
+          setIsComplete(true);
+          const stars = timer < 180 ? 3 : timer < 300 ? 2 : 1;
+          updatePuzzleProgress(selectedPuzzle, timer, stars);
+        });
+
+        canvasRef.current = canvas;
+      } catch (err) {
+        console.error('Error initializing headbreaker:', err);
+      }
+    };
+
+    img.onerror = () => {
+      console.error('Failed to load image for puzzle');
+    };
+
+    return () => {
+      canvasRef.current = null;
+      container.innerHTML = '';
+    };
+  }, [selectedPuzzle, imageUrl, isImageLoading]);
+
+  const startPuzzle = (id: number) => {
     setSelectedPuzzle(id);
     setTimer(0);
     setIsComplete(false);
-    setSelectedPiece(null);
-    setRevealPhase('none');
-    
-    // Create pieces - all start in the "available" area (currentPos = -1)
-    const newPieces: PuzzlePiece[] = Array.from({ length: 25 }, (_, i) => ({
-      id: i,
-      correctPos: i,
-      currentPos: -1, // -1 means not on board yet
-    }));
-    
-    // Shuffle the pieces array order for display in available area
-    for (let i = newPieces.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [newPieces[i], newPieces[j]] = [newPieces[j], newPieces[i]];
-    }
-    
-    setPieces(newPieces);
-  };
-  
-  // Cleanup timeouts on unmount
-  useEffect(() => {
-    return () => {
-      revealTimeoutsRef.current.forEach(t => clearTimeout(t));
-    };
-  }, []);
-
-  const handleBoardSlotClick = (boardPos: number) => {
-    if (isComplete || isImageLoading) return;
-
-    const pieceOnBoard = pieces.find(p => p.currentPos === boardPos);
-
-    if (selectedPiece !== null) {
-      // We have a selected piece
-      const selected = pieces.find(p => p.id === selectedPiece);
-      if (!selected) return;
-
-      playSelect();
-
-      if (pieceOnBoard) {
-        // Swap: selected piece goes to boardPos, piece on board goes to selected's position
-        const newPieces = pieces.map(p => {
-          if (p.id === selectedPiece) {
-            return { ...p, currentPos: boardPos };
-          }
-          if (p.id === pieceOnBoard.id) {
-            return { ...p, currentPos: selected.currentPos };
-          }
-          return p;
-        });
-        setPieces(newPieces);
-        checkCompletion(newPieces);
-      } else {
-        // Empty slot: move selected piece there
-        const newPieces = pieces.map(p => {
-          if (p.id === selectedPiece) {
-            return { ...p, currentPos: boardPos };
-          }
-          return p;
-        });
-        setPieces(newPieces);
-        checkCompletion(newPieces);
-      }
-      setSelectedPiece(null);
-    } else if (pieceOnBoard) {
-      // Select the piece on this board position
-      setSelectedPiece(pieceOnBoard.id);
-      playSelect();
-    }
+    canvasRef.current = null;
   };
 
-  const handleAvailablePieceClick = (piece: PuzzlePiece) => {
-    if (isComplete || isImageLoading) return;
-    playSelect();
-
-    if (selectedPiece === piece.id) {
-      // Deselect
-      setSelectedPiece(null);
-    } else if (selectedPiece !== null) {
-      // Swap with another available piece or piece on board
-      const selected = pieces.find(p => p.id === selectedPiece);
-      if (!selected) return;
-
-      const newPieces = pieces.map(p => {
-        if (p.id === selectedPiece) {
-          return { ...p, currentPos: piece.currentPos };
-        }
-        if (p.id === piece.id) {
-          return { ...p, currentPos: selected.currentPos };
-        }
-        return p;
-      });
-      setPieces(newPieces);
-      setSelectedPiece(null);
-      checkCompletion(newPieces);
-    } else {
-      // Select this piece
-      setSelectedPiece(piece.id);
+  const handleRestart = () => {
+    if (selectedPuzzle) {
+      setIsComplete(false);
+      setTimer(0);
+      // Re-trigger the effect by forcing a re-render
+      const id = selectedPuzzle;
+      setSelectedPuzzle(null);
+      setTimeout(() => setSelectedPuzzle(id), 50);
     }
   };
-
-  const checkCompletion = useCallback((currentPieces: PuzzlePiece[]) => {
-    if (revealPhase !== 'none') return;
-    
-    const allCorrect = currentPieces.every(p => p.currentPos === p.correctPos);
-    if (allCorrect) {
-      playSuccess();
-      
-      // Clear any existing timeouts
-      revealTimeoutsRef.current.forEach(t => clearTimeout(t));
-      revealTimeoutsRef.current = [];
-      
-      // Start reveal animation sequence
-      setRevealPhase('assembling');
-      
-      const timeout1 = setTimeout(() => setRevealPhase('merging'), 800);
-      const timeout2 = setTimeout(() => {
-        setRevealPhase('complete');
-        setIsComplete(true);
-        const stars = timer < 180 ? 3 : timer < 300 ? 2 : 1;
-        updatePuzzleProgress(selectedPuzzle!, timer, stars);
-      }, 1800);
-      
-      revealTimeoutsRef.current = [timeout1, timeout2];
-    } else {
-      const correctCount = currentPieces.filter(p => p.currentPos === p.correctPos).length;
-      if (correctCount > 0) {
-        playMatch();
-      }
-    }
-  }, [playSuccess, playMatch, timer, selectedPuzzle, updatePuzzleProgress, revealPhase]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
-
-  // Get pieces on board and available pieces
-  const piecesOnBoard = pieces.filter(p => p.currentPos >= 0);
-  const availablePieces = pieces.filter(p => p.currentPos === -1);
-  const correctCount = pieces.filter(p => p.currentPos === p.correctPos).length;
 
   // Puzzle Selection Screen
   if (!selectedPuzzle) {
@@ -289,178 +223,34 @@ const PuzzleGame = () => {
         </Button>
         <div className="text-center flex-1">
           <div className="font-bold text-sm truncate">{puzzleData?.title}</div>
+          <div className="text-xs text-muted-foreground italic">"{puzzleData?.verse}"</div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* View button next to timer */}
-          <Button 
-            variant="outline" 
-            size="icon"
-            className="h-8 w-8"
-            onMouseDown={() => setShowGuide(true)} 
-            onMouseUp={() => setShowGuide(false)} 
-            onMouseLeave={() => setShowGuide(false)}
-            onTouchStart={() => setShowGuide(true)}
-            onTouchEnd={() => setShowGuide(false)}
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-          <div className="font-mono text-lg">{formatTime(timer)}</div>
-        </div>
+        <div className="font-mono text-lg">{formatTime(timer)}</div>
       </div>
 
-      {/* BOARD AREA - Where pieces are placed */}
-      <div className="mb-6">
-        <div className="text-sm text-muted-foreground text-center mb-2 flex items-center justify-center gap-2">
-          <Grid3X3 className="h-3 w-3" />
-          Tabuleiro ({correctCount}/25 corretas)
-        </div>
-        <div className={`relative bg-muted/50 rounded-xl p-3 border-2 border-dashed border-muted-foreground/30 max-w-md mx-auto transition-all duration-700 ${revealPhase === 'merging' || revealPhase === 'complete' ? 'p-0 border-0 overflow-hidden' : ''}`}>
-          {showGuide && imageUrl && revealPhase === 'none' && (
-            <div className="absolute inset-2 z-10 rounded-lg overflow-hidden pointer-events-none">
-              <img 
-                src={imageUrl} 
-                alt={puzzleData?.title}
-                className="w-full h-full object-cover opacity-70"
-              />
-            </div>
-          )}
-          
-          {/* Divine glow overlay during reveal */}
-          {(revealPhase === 'assembling' || revealPhase === 'merging') && (
-            <div 
-              className="absolute inset-0 pointer-events-none rounded-xl z-20 animate-divine-reveal"
-              style={{
-                background: 'radial-gradient(circle at center, hsl(var(--secondary) / 0.5) 0%, transparent 70%)',
-              }}
-            />
-          )}
-          
-          <div className={`grid grid-cols-5 aspect-square transition-all duration-700 ${revealPhase === 'merging' || revealPhase === 'complete' ? 'gap-0' : 'gap-0'}`}>
-            {Array.from({ length: 25 }).map((_, boardPos) => {
-              const piece = piecesOnBoard.find(p => p.currentPos === boardPos);
-              const isCorrect = piece && piece.correctPos === boardPos;
-              const isSelected = piece && selectedPiece === piece.id;
-              const isEmpty = !piece;
-              const isRevealing = revealPhase !== 'none';
-              const isMerging = revealPhase === 'merging' || revealPhase === 'complete';
-
-              // Calculate background position for the piece
-              const pieceRow = piece ? Math.floor(piece.id / 5) : 0;
-              const pieceCol = piece ? piece.id % 5 : 0;
-
-              return (
-                <div key={boardPos} className={`relative transition-all duration-700 ${isMerging ? 'p-0' : 'p-0.5'}`}>
-                  <button
-                    onClick={() => !isRevealing && handleBoardSlotClick(boardPos)}
-                    disabled={isRevealing}
-                    className={`w-full h-full aspect-square transition-all overflow-visible relative
-                      ${isEmpty ? 'bg-background/50 border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/10 rounded-md' : ''}
-                      ${isCorrect && showBorders && !isRevealing ? 'ring-2 ring-success ring-offset-1' : ''}
-                      ${isSelected && !isRevealing ? 'ring-3 ring-primary scale-110 z-20 shadow-lg' : ''}
-                      ${!isEmpty && !isSelected && !isRevealing ? 'hover:scale-105 hover:z-10 hover:shadow-md cursor-pointer' : ''}
-                      ${isEmpty && selectedPiece !== null && !isRevealing ? 'border-primary/50 bg-primary/10' : ''}
-                      ${revealPhase === 'assembling' && piece ? 'animate-piece-glow' : ''}
-                      ${isRevealing ? 'cursor-default' : ''}
-                    `}
-                  >
-                    {piece && (
-                      <PuzzlePieceSvg
-                        pieceId={piece.id}
-                        pieceCol={pieceCol}
-                        pieceRow={pieceRow}
-                        imageUrl={imageUrl}
-                        disableClip={isMerging}
-                        className="absolute inset-0 w-full h-full pointer-events-none"
-                      />
-                    )}
-                    {isEmpty && !isRevealing && (
-                      <span className="text-muted-foreground/30 text-xs">{boardPos + 1}</span>
-                    )}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* AVAILABLE PIECES AREA */}
-      <div className="mb-6">
-        <div className="text-sm text-muted-foreground text-center mb-2">
-          Peças disponíveis ({availablePieces.length} restantes)
-        </div>
-        <div className="bg-card rounded-xl p-4 border min-h-[140px] max-w-md mx-auto">
-          {availablePieces.length === 0 ? (
-            <div className="flex items-center justify-center h-24 text-muted-foreground text-base">
-              Todas as peças foram colocadas no tabuleiro!
-            </div>
-          ) : (
-            <div className="grid grid-cols-5 gap-3">
-              {availablePieces.map((piece) => {
-                const isSelected = selectedPiece === piece.id;
-                const pieceRow = Math.floor(piece.id / 5);
-                const pieceCol = piece.id % 5;
-
-                return (
-                  <div key={piece.id} className="relative p-1">
-                    <button
-                      onClick={() => handleAvailablePieceClick(piece)}
-                      title={`Peça ${piece.id + 1}`}
-                      className={`w-full aspect-square transition-all overflow-visible shadow-md relative
-                        ${isSelected ? 'ring-3 ring-primary scale-115 z-10 shadow-xl' : 'hover:scale-110 hover:shadow-lg'}
-                      `}
-                    >
-                      <PuzzlePieceSvg
-                        pieceId={piece.id}
-                        pieceCol={pieceCol}
-                        pieceRow={pieceRow}
-                        imageUrl={imageUrl}
-                        className="absolute inset-0 w-full h-full pointer-events-none"
-                      />
-                      {!imageUrl && (
-                        <span className="relative z-10 text-muted-foreground text-sm font-bold">{piece.id + 1}</span>
-                      )}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Headbreaker Canvas */}
+      <div 
+        ref={containerRef}
+        className="w-full flex justify-center mb-4 min-h-[400px] bg-muted/30 rounded-xl border-2 border-dashed border-muted-foreground/20 overflow-hidden"
+      />
 
       {/* Controls */}
       <div className="flex flex-wrap justify-center gap-2 mb-4">
-        <Button 
-          variant={showBorders ? "default" : "outline"} 
-          size="sm" 
-          onClick={() => setShowBorders(!showBorders)}
-        >
-          <Grid3X3 className="h-4 w-4 mr-1" /> Bordas
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => startPuzzle(selectedPuzzle)}>
+        <Button variant="outline" size="sm" onClick={handleRestart}>
           <RotateCcw className="h-4 w-4 mr-1" /> Reiniciar
         </Button>
       </div>
 
       {/* Instructions */}
-      {availablePieces.length > 0 && !selectedPiece && (
-        <div className="text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
-          <HelpCircle className="h-3 w-3" />
-          Clique em uma peça abaixo, depois clique onde quer colocá-la no tabuleiro
-        </div>
-      )}
-      {selectedPiece !== null && (
-        <div className="text-center text-xs text-primary font-medium animate-pulse">
-          Peça selecionada! Clique no tabuleiro para posicionar
-        </div>
-      )}
+      <div className="text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
+        <HelpCircle className="h-3 w-3" />
+        Arraste as peças para encaixá-las no lugar correto
+      </div>
 
-      {/* Complete Modal - Full image without borders */}
+      {/* Complete Modal */}
       {isComplete && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="relative max-w-lg w-full animate-scale-in">
-            {/* Full image as the main focus */}
             {imageUrl && (
               <div className="relative rounded-2xl overflow-hidden shadow-2xl">
                 <img 
@@ -469,7 +259,6 @@ const PuzzleGame = () => {
                   className="w-full h-auto"
                 />
                 
-                {/* Gradient overlay with info at bottom */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-6">
                   <div className="flex items-center justify-center gap-1 mb-3">
                     <span className="text-3xl">🎉</span>
@@ -500,7 +289,6 @@ const PuzzleGame = () => {
               </div>
             )}
             
-            {/* Fallback if no image */}
             {!imageUrl && (
               <Card className="p-6 text-center">
                 <div className="text-4xl mb-2">🎉</div>
